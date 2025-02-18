@@ -8,7 +8,7 @@ import sysconfig
 
 # --- Version Check ---
 # Ensure the script is run with Python 3.10 or higher
-if sys.version_info < (3.10):
+if sys.version_info < (3, 10):
     print("This script requires Python 3.10 or higher.")
     sys.exit(1)
 
@@ -72,33 +72,47 @@ def download_clinerules_files():
         download_file(url, fname)
 
 def generate_product_context():
-    """Generate memory-bank/productContext.md by scanning for a README file."""
-    description = "No project description found."
+    """Generate memory-bank/productContext.md by extracting a project description from README files."""
+    description = None
+    # Try to extract from a "## Project Description" section first
     for readme in ["README.md", "readme.md", "README.txt", "readme.txt"]:
         if os.path.exists(readme):
             with open(readme, "r", encoding="utf-8") as f:
                 content = f.read()
-            # Look for a 'What it does' section
-            marker = "## What it does"
-            if marker in content:
-                after_marker = content.split(marker, 1)[1].strip()
+            # Look for a "## Project Description" header
+            if "## Project Description" in content:
+                after_marker = content.split("## Project Description", 1)[1].strip()
                 lines = after_marker.splitlines()
-                para = []
+                collected = []
                 for line in lines:
-                    if line.strip() == "":
-                        if para:
+                    if line.startswith("##"):
+                        break
+                    if not line.strip():
+                        if collected:
                             break
                         continue
-                    para.append(line.strip())
-                if para:
-                    description = " ".join(para)
-            else:
-                # Fallback: use the first non-empty line
-                for line in content.splitlines():
-                    if line.strip():
-                        description = line.strip()
+                    collected.append(line.strip())
+                if collected:
+                    description = " ".join(collected)
+                    break
+            # Fallback to "## What it does" if needed
+            elif "## What it does" in content:
+                after_marker = content.split("## What it does", 1)[1].strip()
+                lines = after_marker.splitlines()
+                collected = []
+                for line in lines:
+                    if line.startswith("##"):
                         break
-            break
+                    if not line.strip():
+                        if collected:
+                            break
+                        continue
+                    collected.append(line.strip())
+                if collected:
+                    description = " ".join(collected)
+                    break
+    if not description:
+        description = "No project description available."
 
     prod_context_path = os.path.join("memory-bank", "productContext.md")
     with open(prod_context_path, "w", encoding="utf-8") as f:
