@@ -166,15 +166,44 @@ def do_install_extension():
 def do_self_install():
     """
     Install this CLI tool into the Python Scripts folder so that it can be run globally.
-    The target folder is determined via sysconfig.
+    If a virtual environment is detected, prompt the user to choose the installation location.
+    Safety checks ensure no accidental damage to the file system.
     """
-    target_folder = sysconfig.get_path("scripts")
+    # Determine target base path based on virtual environment detection
+    if sys.prefix != sys.base_prefix:
+        # Virtual environment detected
+        choice = input("Virtual environment detected. Install to (v)env or (g)lobal Python? [v/g]: ").strip().lower()
+        if choice == "g":
+            # Use global Python installation base
+            base_path = sys.base_prefix
+        else:
+            # Default to current virtual environment
+            base_path = sys.prefix
+    else:
+        base_path = sys.prefix
+
+    # Get the scripts directory for the selected base
+    target_folder = sysconfig.get_path("scripts", vars={'base': base_path})
     if not target_folder:
-        print("Could not determine the Python Scripts directory.")
+        print("Could not determine the Python Scripts directory for the selected installation.")
         sys.exit(1)
-    # Target file will be named "roo-code" (no extension)
+
+    # Safety check: ensure the target folder is writable
+    if not os.access(target_folder, os.W_OK):
+        print(f"Write access denied for directory: {target_folder}. Aborting installation.")
+        sys.exit(1)
+
+    # Define the target file path
     target_file = os.path.join(target_folder, "roo-code")
     current_script = os.path.abspath(__file__)
+
+    # Safety check: if the target file exists, prompt before overwriting
+    if os.path.exists(target_file):
+        overwrite = input(f"{target_file} already exists. Overwrite? [y/N]: ").strip().lower()
+        if overwrite not in ("y", "yes"):
+            print("Installation aborted by user.")
+            sys.exit(0)
+
     try:
         shutil.copy(current_script, target_file)
         if os.name != 'nt':
