@@ -34,5 +34,5 @@ A cross-platform CLI tool for installing the Roo Code Memory Bank extension into
 1. **Clone or Download the Script:**
 
    ```bash
-   git clone https://github.com/yourusername/roo-code-memory-bank-installer.git
+   git clone https://github.com/heratiki/roo-code-memory-bank-installer.git
    cd roo-code-memory-bank-installer
