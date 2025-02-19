@@ -68,58 +68,60 @@ def download_file(url, dest):
 
 def download_clinerules_files():
     """Download all .clinerules files from their respective URLs."""
-    for fname, url in clinerules_files.items():
-        download_file(url, fname)
-
+    download_file(args.architect_url, ".clinerules-architect")
+    download_file(args.ask_url, ".clinerules-ask")
+    download_file(args.code_url, ".clinerules-code")
 def generate_product_context():
-    """Generate memory-bank/productContext.md by extracting a project description from README files."""
+    """Generate memory-bank/productContext.md by extracting a brief project description from a README file."""
     description = None
-    # Try to extract from a "## Project Description" section first
-    for readme in ["README.md", "readme.md", "README.txt", "readme.txt"]:
+    # Define potential README file names
+    readme_files = ["README.md", "readme.md", "README.txt", "readme.txt"]
+    for readme in readme_files:
         if os.path.exists(readme):
             with open(readme, "r", encoding="utf-8") as f:
                 content = f.read()
-            # Look for a "## Project Description" header
+            # Try "## Project Description" first
             if "## Project Description" in content:
                 after_marker = content.split("## Project Description", 1)[1].strip()
-                lines = after_marker.splitlines()
-                collected = []
-                for line in lines:
-                    if line.startswith("##"):
-                        break
-                    if not line.strip():
-                        if collected:
-                            break
-                        continue
-                    collected.append(line.strip())
-                if collected:
-                    description = " ".join(collected)
-                    break
-            # Fallback to "## What it does" if needed
+            # Otherwise, try "## What it does"
             elif "## What it does" in content:
                 after_marker = content.split("## What it does", 1)[1].strip()
-                lines = after_marker.splitlines()
-                collected = []
-                for line in lines:
-                    if line.startswith("##"):
-                        break
-                    if not line.strip():
-                        if collected:
-                            break
-                        continue
-                    collected.append(line.strip())
-                if collected:
-                    description = " ".join(collected)
+            else:
+                after_marker = content
+
+            # Split the content by headers if any appear
+            lines = after_marker.splitlines()
+            collected = []
+            for line in lines:
+                # Stop if a new header is met.
+                if line.strip().startswith("##"):
                     break
+                if line.strip():
+                    collected.append(line.strip())
+                # Gather up to first 2 non-empty lines
+                if len(collected) == 2:
+                    break
+            if collected:
+                # Join lines and extract only the first sentence if possible.
+                candidate = " ".join(collected)
+                # Basic heuristic: take text up to first period.
+                if "." in candidate:
+                    candidate = candidate.split(".", 1)[0] + "."
+                description = candidate
+                break
+
     if not description:
         description = "No project description available."
 
     prod_context_path = os.path.join("memory-bank", "productContext.md")
+    if os.path.exists(prod_context_path):
+        if not prompt_yes_no(f"{prod_context_path} already exists. Overwrite?"):
+            print("Skipping productContext.md creation.")
+            return
     with open(prod_context_path, "w", encoding="utf-8") as f:
         f.write("# Product Context\n\n")
         f.write(description + "\n")
     print("Created memory-bank/productContext.md with project description.")
-
 def update_gitignore():
     """Ask the user to append extension files/folder to .gitignore."""
     ignore_lines = [
@@ -152,7 +154,7 @@ def verify_installation():
     return all_good
 
 # --- Command Functions ---
-def do_install_extension():
+def do_install_extension(architect_url, ask_url, code_url):
     """Run the installation process for the Roo Code Memory Bank extension."""
     print("=== Roo Code Memory Bank Extension Installer ===\n")
     if any_extension_exists():
@@ -163,8 +165,11 @@ def do_install_extension():
         sys.exit(0)
 
     create_memory_bank_folder()
-    download_clinerules_files()
+    download_file(architect_url, ".clinerules-architect")
+    download_file(ask_url, ".clinerules-ask")
+    download_file(code_url, ".clinerules-code")
     generate_product_context()
+
 
     if verify_installation():
         print("\nRoo Code Memory Bank extension has been successfully created in the current folder.")
@@ -176,7 +181,6 @@ def do_install_extension():
         update_gitignore()
     else:
         print("Skipping .gitignore update.")
-
 def do_self_install():
     """
     Install this CLI tool into the Python Scripts folder so that it can be run globally.
@@ -236,11 +240,25 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="Sub-commands")
 
     # Subcommand to install the extension into the current folder
-    subparsers.add_parser(
+    install_parser = subparsers.add_parser(
         "install-extension",
         help="Install the Roo Code Memory Bank extension in the current directory."
     )
-
+    install_parser.add_argument(
+        "--architect-url",
+        default="https://raw.githubusercontent.com/GreatScottyMac/roo-code-memory-bank/main/.clinerules-architect",
+        help="URL for the .clinerules-architect file"
+    )
+    install_parser.add_argument(
+        "--ask-url",
+        default="https://raw.githubusercontent.com/GreatScottyMac/roo-code-memory-bank/main/.clinerules-ask",
+        help="URL for the .clinerules-ask file"
+    )
+    install_parser.add_argument(
+        "--code-url",
+        default="https://raw.githubusercontent.com/GreatScottyMac/roo-code-memory-bank/main/.clinerules-code",
+        help="URL for the .clinerules-code file"
+    )
     # Subcommand to install this CLI tool into the Python Scripts folder
     subparsers.add_parser(
         "self-install",
@@ -257,7 +275,7 @@ def main():
         sys.exit(0)
 
     if args.command == "install-extension":
-        do_install_extension()
+        do_install_extension(args.architect_url, args.ask_url, args.code_url)
     elif args.command == "self-install":
         do_self_install()
     else:
