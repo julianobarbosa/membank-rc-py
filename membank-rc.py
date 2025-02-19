@@ -6,6 +6,9 @@ import urllib.request
 import shutil
 import sysconfig
 
+# --- Version Information ---
+VERSION = "1.2.0"
+
 # --- Version Check ---
 # Ensure the script is run with Python 3.10 or higher
 if sys.version_info < (3, 10):
@@ -138,6 +141,18 @@ def update_gitignore():
                 print(f"Added '{line}' to .gitignore.")
     print("Updated .gitignore.")
 
+def get_remote_file_info(url):
+    """Get the last modified time of a remote file."""
+    try:
+        with urllib.request.urlopen(url) as response:
+            return {
+                'last_modified': response.headers.get('last-modified'),
+                'content': response.read().decode('utf-8')
+            }
+    except Exception as e:
+        print(f"Error checking remote file: {e}")
+        return None
+
 def verify_installation():
     """Ensure the three .clinerules files and productContext.md exist."""
     required = list(clinerules_files.keys()) + [os.path.join("memory-bank", "productContext.md")]
@@ -147,6 +162,37 @@ def verify_installation():
             print(f"Error: {path} is missing.")
             all_good = False
     return all_good
+
+def do_update_extension():
+    """Check for and apply updates to .clinerules files."""
+    print("=== Checking for Roo Code Memory Bank Extension Updates ===\n")
+    
+    updates_available = False
+    for local_file, remote_url in clinerules_files.items():
+        if not os.path.exists(local_file):
+            print(f"Warning: {local_file} not found. Skipping update check.")
+            continue
+            
+        print(f"Checking {local_file} for updates...")
+        remote_info = get_remote_file_info(remote_url)
+        
+        if remote_info:
+            with open(local_file, 'r', encoding='utf-8') as f:
+                local_content = f.read()
+            
+            if local_content != remote_info['content']:
+                updates_available = True
+                if prompt_yes_no(f"Update available for {local_file}. Would you like to update?"):
+                    with open(local_file, 'w', encoding='utf-8') as f:
+                        f.write(remote_info['content'])
+                    print(f"Updated {local_file}.")
+                else:
+                    print(f"Skipped update for {local_file}.")
+    
+    if not updates_available:
+        print("\nAll .clinerules files are up to date!")
+    else:
+        print("\nUpdate process completed.")
 
 # --- Command Functions ---
 def do_install_extension(architect_url, ask_url, code_url):
@@ -272,6 +318,12 @@ def main():
         "self-install",
         help="Install this CLI tool into your Python Scripts directory for global access."
     )
+    
+    # Subcommand to update .clinerules files
+    subparsers.add_parser(
+        "update",
+        help="Check for and apply updates to .clinerules files from the GitHub repository."
+    )
 
     # Global version flag
     parser.add_argument("--version", action="store_true", help="Show version info and exit.")
@@ -279,13 +331,15 @@ def main():
     args = parser.parse_args()
 
     if args.version:
-        print("Roo Code Memory Bank Installer version 1.0")
+        print(f"Roo Code Memory Bank Installer version {VERSION}")
         sys.exit(0)
 
     if args.command == "install-extension":
         do_install_extension(args.architect_url, args.ask_url, args.code_url)
     elif args.command == "self-install":
         do_self_install()
+    elif args.command == "update":
+        do_update_extension()
     else:
         parser.print_help()
         sys.exit(1)
