@@ -206,8 +206,11 @@ def do_self_install():
         print(f"Write access denied for directory: {target_folder}. Aborting installation.")
         sys.exit(1)
 
-    # Define the target file path using 'membank-rc' instead of 'roo-code'
-    target_file = os.path.join(target_folder, "membank-rc")
+    # Define the target file path using 'membank-rc' with platform-specific extension
+    if os.name == 'nt':
+        target_file = os.path.join(target_folder, "membank-rc.py")
+    else:
+        target_file = os.path.join(target_folder, "membank-rc")
     current_script = os.path.abspath(__file__)
 
     # Safety check: if the target file exists, prompt before overwriting
@@ -220,10 +223,14 @@ def do_self_install():
     try:
         shutil.copy(current_script, target_file)
         if os.name != 'nt':
-            os.chmod(target_file, 0o755)
+            try:
+                os.chmod(target_file, 0o755)
+            except Exception as e:
+                print(f"Warning: Could not set executable permissions: {e}")
+                print("You may need to manually set executable permissions.")
         else:
-            # On Windows, create a batch file launcher named 'membank-rc.bat'
-            bat_path = target_file + ".bat"
+            # On Windows, create a batch file launcher
+            bat_path = os.path.join(target_folder, "membank-rc.bat")
             with open(bat_path, "w", encoding="utf-8") as bat:
                 bat.write(f'@echo off\r\n"{sys.executable}" "{target_file}" %*\r\n')
             print(f"Created Windows batch launcher at {bat_path}.")
