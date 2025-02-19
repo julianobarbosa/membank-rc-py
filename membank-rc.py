@@ -66,11 +66,6 @@ def download_file(url, dest):
         print(f"Error downloading {dest}: {e}")
         sys.exit(1)
 
-def download_clinerules_files():
-    """Download all .clinerules files from their respective URLs."""
-    download_file(args.architect_url, ".clinerules-architect")
-    download_file(args.ask_url, ".clinerules-ask")
-    download_file(args.code_url, ".clinerules-code")
 def generate_product_context():
     """Generate memory-bank/productContext.md by extracting a brief project description from a README file."""
     description = None
