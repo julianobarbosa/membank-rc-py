@@ -477,7 +477,10 @@ def main():
     elif args.command == "self-install":
         do_self_install()
     elif args.command == "update":
-        do_update_extension()
+        if args.skip_script:
+            do_update_extension()
+        else:
+            do_check_updates(os.path.abspath(__file__))
     else:
         parser.print_help()
         sys.exit(1)
