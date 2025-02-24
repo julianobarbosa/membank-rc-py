@@ -28,11 +28,15 @@ expected_files = [
     os.path.join("memory-bank", "systemPatterns.md"),
 ]
 
-# URLs for downloading the .clinerules files
+# URLs for downloading files
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/GreatScottyMac/roo-code-memory-bank/main"
+SCRIPT_URL = f"{GITHUB_RAW_URL}/membank-rc.py"
+VERSION_URL = f"{GITHUB_RAW_URL}/version.txt"
+
 clinerules_files = {
-    ".clinerules-architect": "https://raw.githubusercontent.com/GreatScottyMac/roo-code-memory-bank/main/.clinerules-architect",
-    ".clinerules-ask":       "https://raw.githubusercontent.com/GreatScottyMac/roo-code-memory-bank/main/.clinerules-ask",
-    ".clinerules-code":      "https://raw.githubusercontent.com/GreatScottyMac/roo-code-memory-bank/main/.clinerules-code"
+    ".clinerules-architect": f"{GITHUB_RAW_URL}/.clinerules-architect",
+    ".clinerules-ask":       f"{GITHUB_RAW_URL}/.clinerules-ask",
+    ".clinerules-code":      f"{GITHUB_RAW_URL}/.clinerules-code"
 }
 
 # --- Utility Functions ---
@@ -70,96 +74,111 @@ def download_file(url, dest):
         sys.exit(1)
 
 def generate_product_context():
-    """Generate memory-bank/productContext.md by extracting a brief project description from a README file."""
+    """Generate memory-bank/productContext.md by extracting project description from README and adding efficiency guidelines."""
     description = None
-    # Define potential README file names
     readme_files = ["README.md", "readme.md", "README.txt", "readme.txt"]
+    
+    # Efficiency-focused template
+    efficiency_template = """
+# Product Context
+
+## Project Overview
+
+{project_description}
+
+## Development Guidelines
+
+### Efficiency & Cost Optimization
+
+- Do NOT generate code unless explicitly requested
+- Do NOT provide excessive details or descriptions unless necessary
+- Keep all responses structured, concise, and actionable
+- Always seek approval before expanding on details or switching modes
+
+### Best Practices
+
+1. Gather Full Context Before Planning
+   - Ask only critical clarifying questions
+   - Identify key objectives and constraints
+   - Use existing context when sufficient
+
+2. Design & Development Efficiency
+   - Follow modern development principles
+   - Optimize for performance and maintainability
+   - Prioritize modular, reusable solutions
+   - Consider scalability and long-term costs
+
+3. Token-Efficient Development
+   - Break features into logical phases
+   - Focus on essential architecture
+   - Use efficient tools and frameworks
+   - Provide concise, actionable roadmaps
+   - Seek approval before detailed implementation
+"""
+
+    # Extract project description from README
     for readme in readme_files:
         if os.path.exists(readme):
             with open(readme, "r", encoding="utf-8") as f:
                 content = f.read()
-            # Try "## Project Description" first
-            if "## Project Description" in content:
-                after_marker = content.split("## Project Description", 1)[1].strip()
-            # Otherwise, try "## What it does"
-            elif "## What it does" in content:
-                after_marker = content.split("## What it does", 1)[1].strip()
-            else:
-                after_marker = content
 
-            # Split the content by headers if any appear
-            lines = after_marker.splitlines()
-            collected = []
-            for line in lines:
-                # Stop if a new header is met.
-                if line.strip().startswith("##"):
+            # Try to find project description section
+            sections = [
+                ("## Project Description", "## "),
+                ("## What it does", "## "),
+                ("# Project Description", "# "),
+                ("# What it does", "# ")
+            ]
+
+            for section_start, section_end in sections:
+                if section_start in content:
+                    parts = content.split(section_start, 1)[1].split(section_end, 1)
+                    description = parts[0] if len(parts) > 1 else parts[0]
+                    description = description.strip()
                     break
-                if line.strip():
-                    collected.append(line.strip())
-                # Gather up to first 2 non-empty lines
-                if len(collected) == 2:
-                    break
-            if collected:
-                # Join lines and extract only the first sentence if possible.
-                candidate = " ".join(collected)
-                # Basic heuristic: take text up to first period.
-                if "." in candidate:
-                    candidate = candidate.split(".", 1)[0] + "."
-                ''' I'd like to implement adding the following to the beginning of the description so that each productContext.md is created with efficiency in mind
-                You are an experienced AI software architect and technical planner. Your goal is to **develop an ultra-efficient development plan** for a specific feature, section, or page of the Medellín AI application.  
 
-                Your **top priorities** are to:  
-                - Minimize token usage and AI costs  
-                - Ensure development follows industry best practices  
-                - Generate only structured, essential responses  
-                - Avoid unnecessary AI calls or overly detailed responses  
+            if not description:
+                # If no section found, use first paragraph after first heading
+                lines = content.splitlines()
+                collecting = False
+                collected = []
 
-                ### **Efficiency & Cost Optimization Guidelines**  
-                - Do NOT generate code unless explicitly requested.  
-                - Do NOT provide excessive details or descriptions unless necessary.  
-                - Keep all responses structured, concise, and actionable.  
-                - Always seek approval before expanding on details or switching to Code Mode.  
+                for line in lines:
+                    if line.startswith('#') and not collecting:
+                        collecting = True
+                        continue
+                    if collecting:
+                        if not line.strip():
+                            if collected:
+                                break
+                            continue
+                        if line.startswith('#'):
+                            break
+                        collected.append(line.strip())
 
-                ### **1. Gather Full Context Before Planning (Avoid Unnecessary Processing)**  
-                - Ask only the most critical clarifying questions to ensure full understanding of the feature’s purpose and requirements.  
-                - Identify the key objectives, user needs, and constraints for this feature.  
-                - If the user provides sufficient context, proceed without redundant clarifications.  
+                if collected:
+                    description = ' '.join(collected)
 
-                ### **2. Best Practices for Efficient Design & Development**  
-                - Follow modern UI/UX principles (if applicable).  
-                - Optimize for performance, scalability, and maintainability while keeping costs low.  
-                - Ensure SEO, accessibility, and mobile responsiveness if working on a website section.  
-                - Prioritize modular, reusable, and efficient development strategies.  
-
-                ### **3. Token-Efficient Development Plan (Step-by-Step Breakdown)**  
-                - Step 1: Break down the feature into logical phases (planning, design, development).  
-                - Step 2: Outline the essential architecture (components, APIs, databases, integrations).  
-                - Step 3: Recommend only the most efficient tools, frameworks, and libraries to use.  
-                - Step 4: Provide a concise, actionable roadmap with estimated effort/time, focusing only on necessary details.  
-                - Step 5: Stop and ask for my approval before switching to Code Mode, generating implementation steps, or expanding details.  
-
-                ### **4. Final Deliverable (Minimal Token Usage, Maximum Efficiency)**  
-                - The output should be a clear, structured technical plan in Markdown format so I can review and approve before moving forward.  
-                - Do not generate unnecessary descriptions, examples, or explanations unless explicitly requested.  
-
-                **Example Use Case:**  
-                "Plan how to develop the user authentication system for the project I using best security practices while strictly minimizing token usage." '''
-
-                description = candidate
+            if description:
                 break
 
     if not description:
         description = "No project description available."
 
+    # Format the content with the extracted description
+    content = efficiency_template.format(project_description=description)
+
+    # Write to productContext.md
     prod_context_path = os.path.join("memory-bank", "productContext.md")
     if os.path.exists(prod_context_path):
         if not prompt_yes_no(f"{prod_context_path} already exists. Overwrite?"):
             print("Skipping productContext.md creation.")
             return
+
     with open(prod_context_path, "w", encoding="utf-8") as f:
-        f.write("# Product Context\n\n")
-        f.write(description + "\n")
-    print("Created memory-bank/productContext.md with project description.")
+        f.write(content)
+
+    print("Created memory-bank/productContext.md with project description and efficiency guidelines.")
 def update_gitignore():
     """Ask the user to append extension files/folder to .gitignore."""
     ignore_lines = [
@@ -202,6 +221,80 @@ def verify_installation():
             print(f"Error: {path} is missing.")
             all_good = False
     return all_good
+
+def backup_script(script_path):
+    """Create a backup of the script with timestamp."""
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = f"{script_path}.{timestamp}.backup"
+    try:
+        shutil.copy2(script_path, backup_path)
+        print(f"Created backup at: {backup_path}")
+        return True
+    except Exception as e:
+        print(f"Error creating backup: {e}")
+        return False
+
+def check_script_version():
+    """Check if a newer version of the script is available."""
+    try:
+        print("Checking for script updates...")
+        with urllib.request.urlopen(VERSION_URL) as response:
+            latest_version = response.read().decode('utf-8').strip()
+            
+        if latest_version > VERSION:
+            return latest_version
+        return None
+    except Exception as e:
+        print(f"Error checking script version: {e}")
+        return None
+
+def update_script(script_path):
+    """Update the script to the latest version."""
+    try:
+        # Get the latest script content
+        print("Downloading latest version...")
+        with urllib.request.urlopen(SCRIPT_URL) as response:
+            new_content = response.read().decode('utf-8')
+            
+        # Create backup first
+        if not backup_script(script_path):
+            return False
+            
+        # Write new content
+        with open(script_path, 'w', encoding='utf-8') as f:
+            f.write(new_content)
+        
+        # On Unix-like systems, ensure the file is executable
+        if os.name != 'nt':
+            os.chmod(script_path, 0o755)
+            
+        print("Script successfully updated!")
+        return True
+    except Exception as e:
+        print(f"Error updating script: {e}")
+        return False
+
+def do_check_updates(script_path=None):
+    """Check for and apply updates to both the script and .clinerules files."""
+    print("=== Checking for Updates ===\n")
+    
+    # Check script updates first
+    if script_path:
+        latest_version = check_script_version()
+        if latest_version:
+            print(f"\nNew version available: {latest_version} (current: {VERSION})")
+            if prompt_yes_no("Would you like to update the script?"):
+                if update_script(script_path):
+                    print("\nPlease restart the script to use the new version.")
+                    return  # Exit after script update
+            else:
+                print("Script update skipped.")
+        else:
+            print("\nScript is up to date.")
+    
+    # Then check .clinerules updates
+    do_update_extension()
 
 def do_update_extension():
     """Check for and apply updates to .clinerules files."""
@@ -359,10 +452,15 @@ def main():
         help="Install this CLI tool into your Python Scripts directory for global access."
     )
     
-    # Subcommand to update .clinerules files
-    subparsers.add_parser(
+    # Subcommand to update script and .clinerules files
+    update_parser = subparsers.add_parser(
         "update",
-        help="Check for and apply updates to .clinerules files from the GitHub repository."
+        help="Check for and apply updates to both the script and .clinerules files."
+    )
+    update_parser.add_argument(
+        "--skip-script",
+        action="store_true",
+        help="Skip checking for script updates, only check .clinerules files."
     )
 
     # Global version flag
