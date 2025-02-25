@@ -388,7 +388,15 @@ def check_script_version(max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOU
             
             with opener.open(VERSION_URL, timeout=(connect_timeout, read_timeout)) as response:
                 latest_version = response.read().decode('utf-8').strip()
-                if parse_version(latest_version) > parse_version(VERSION):
+                current = parse_version(VERSION)
+                latest = parse_version(latest_version)
+                
+                # Ensure both versions are valid
+                if latest == (0, 0, 0):
+                    print("Warning: Unable to parse latest version number")
+                    return None
+                    
+                if latest > current:
                     return latest_version
                 print("Script is up to date.")
                 return None
