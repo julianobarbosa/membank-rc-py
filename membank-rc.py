@@ -5,9 +5,18 @@ import sys
 import urllib.request
 import shutil
 import sysconfig
+import time
+import socket
+import os
 
 # --- Version Information ---
 VERSION = "1.2.0"
+
+# --- Network Configuration ---
+# Get network settings from environment variables or use defaults
+CONNECT_TIMEOUT = int(os.getenv('MEMBANK_CONNECT_TIMEOUT', '10'))
+READ_TIMEOUT = int(os.getenv('MEMBANK_READ_TIMEOUT', '30'))
+MAX_RETRIES = int(os.getenv('MEMBANK_MAX_RETRIES', '3'))
 
 # --- Version Check ---
 # Ensure the script is run with Python 3.10 or higher
@@ -60,18 +69,71 @@ def create_memory_bank_folder():
         os.makedirs("memory-bank")
         print("Created 'memory-bank' folder.")
 
-def download_file(url, dest):
-    """Download a file from a URL and write it to a destination path."""
-    try:
-        print(f"Downloading {dest}...")
-        with urllib.request.urlopen(url) as response:
-            content = response.read().decode("utf-8")
-        with open(dest, "w", encoding="utf-8") as f:
-            f.write(content)
-        print(f"Downloaded {dest}.")
-    except Exception as e:
-        print(f"Error downloading {dest}: {e}")
-        sys.exit(1)
+def download_file(url, dest, max_retries=3, connect_timeout=10, read_timeout=30):
+    """
+    Download a file from a URL and write it to a destination path.
+    
+    Args:
+        url: The URL to download from
+        dest: The destination path to save to
+        max_retries: Maximum number of retry attempts (default: 3)
+        connect_timeout: Connection timeout in seconds (default: 10)
+        read_timeout: Read timeout in seconds (default: 30)
+    """
+    retry_count = 0
+    last_error = None
+    
+    while retry_count <= max_retries:
+        try:
+            print(f"Downloading {dest}...")
+            if retry_count > 0:
+                # Calculate backoff time: 2^n seconds
+                backoff = 2 ** retry_count
+                print(f"Retry attempt {retry_count}/{max_retries} (waiting {backoff}s)...")
+                time.sleep(backoff)
+            
+            opener = urllib.request.build_opener()
+            opener.addheaders = [('User-Agent', f'membank-rc/{VERSION}')]
+            
+            with opener.open(url, timeout=(connect_timeout, read_timeout)) as response:
+                content = response.read().decode("utf-8")
+            
+            with open(dest, "w", encoding="utf-8") as f:
+                f.write(content)
+            
+            print(f"Successfully downloaded {dest}.")
+            return True
+            
+        except urllib.error.URLError as e:
+            last_error = e
+            error_msg = str(e.reason) if hasattr(e, 'reason') else str(e)
+            
+            if isinstance(e.reason, socket.timeout):
+                print(f"Timeout error: {error_msg}")
+            elif isinstance(e.reason, socket.gaierror):
+                print(f"Network error: Could not resolve host - {error_msg}")
+            else:
+                print(f"Download error: {error_msg}")
+                
+        except socket.timeout as e:
+            last_error = e
+            print(f"Timeout error: {e}")
+            
+        except Exception as e:
+            last_error = e
+            print(f"Unexpected error: {e}")
+        
+        retry_count += 1
+        
+    # If we get here, all retries failed
+    print(f"\nFailed to download {dest} after {max_retries} attempts.")
+    print(f"Last error: {last_error}")
+    if isinstance(last_error, urllib.error.URLError) and isinstance(last_error.reason, socket.timeout):
+        print("\nTroubleshooting suggestions:")
+        print("1. Check your internet connection")
+        print("2. The server might be temporarily unavailable")
+        print(f"3. Try increasing the timeouts (current: connect={connect_timeout}s, read={read_timeout}s)")
+    sys.exit(1)
 
 def generate_product_context():
     """Generate memory-bank/productContext.md by extracting project description from README and adding efficiency guidelines."""
