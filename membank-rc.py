@@ -56,9 +56,9 @@ SCRIPT_URL = f"{GITHUB_RAW_URL}/membank-rc.py"
 VERSION_URL = f"{GITHUB_RAW_URL}/version.txt"
 
 clinerules_files = {
-    ".clinerules-architect": f"{GITHUB_RAW_URL}/.clinerules-architect",
-    ".clinerules-ask":       f"{GITHUB_RAW_URL}/.clinerules-ask",
-    ".clinerules-code":      f"{GITHUB_RAW_URL}/.clinerules-code"
+    ".clinerules-architect": "https://raw.githubusercontent.com/heratiki/membank-rc-py/main/.clinerules-architect",
+    ".clinerules-ask":       "https://raw.githubusercontent.com/heratiki/membank-rc-py/main/.clinerules-ask",
+    ".clinerules-code":      "https://raw.githubusercontent.com/heratiki/membank-rc-py/main/.clinerules-code"
 }
 
 # --- Utility Functions ---
@@ -759,17 +759,17 @@ def main():
     )
     install_parser.add_argument(
         "--architect-url",
-        default="https://raw.githubusercontent.com/GreatScottyMac/roo-code-memory-bank/main/.clinerules-architect",
+        default="https://raw.githubusercontent.com/heratiki/membank-rc-py/main/.clinerules-architect",
         help="URL for the .clinerules-architect file"
     )
     install_parser.add_argument(
         "--ask-url",
-        default="https://raw.githubusercontent.com/GreatScottyMac/roo-code-memory-bank/main/.clinerules-ask",
+        default="https://raw.githubusercontent.com/heratiki/membank-rc-py/main/.clinerules-ask",
         help="URL for the .clinerules-ask file"
     )
     install_parser.add_argument(
         "--code-url",
-        default="https://raw.githubusercontent.com/GreatScottyMac/roo-code-memory-bank/main/.clinerules-code",
+        default="https://raw.githubusercontent.com/heratiki/membank-rc-py/main/.clinerules-code",
         help="URL for the .clinerules-code file"
     )
     # Subcommand to install this CLI tool into the Python Scripts folder
