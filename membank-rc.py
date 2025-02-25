@@ -51,7 +51,7 @@ expected_files = [
 ]
 
 # URLs for downloading files
-GITHUB_RAW_URL = "https://raw.githubusercontent.com/GreatScottyMac/roo-code-memory-bank/main"
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/heratiki/membank-rc-py/main"
 SCRIPT_URL = f"{GITHUB_RAW_URL}/membank-rc.py"
 VERSION_URL = f"{GITHUB_RAW_URL}/version.txt"
 
