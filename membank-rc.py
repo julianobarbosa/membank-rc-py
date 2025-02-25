@@ -498,12 +498,13 @@ def check_script_version(max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOU
         print(f"3. Try increasing the timeouts (current: connect={connect_timeout}s, read={read_timeout}s)")
     return None
 
-def update_script(script_path, max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOUT, read_timeout=READ_TIMEOUT):
+def update_script(script_path, new_version=None, max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOUT, read_timeout=READ_TIMEOUT):
     """
-    Update the script to the latest version.
+    Update the script and Memory Bank to the latest version.
     
     Args:
         script_path: Path to the script file to update
+        new_version: Optional version string to update to
         max_retries: Maximum number of retry attempts
         connect_timeout: Connection timeout in seconds
         read_timeout: Read timeout in seconds
@@ -539,6 +540,13 @@ def update_script(script_path, max_retries=MAX_RETRIES, connect_timeout=CONNECT_
             # On Unix-like systems, ensure the file is executable
             if os.name != 'nt':
                 os.chmod(script_path, 0o755)
+
+            # Update Memory Bank version if provided
+            if new_version and os.path.exists(os.path.join("memory-bank", "productContext.md")):
+                if update_memory_bank_version(new_version):
+                    print(f"Memory Bank version updated to {new_version}")
+                else:
+                    print("Warning: Failed to update Memory Bank version")
                 
             print("Script successfully updated!")
             return True
