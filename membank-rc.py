@@ -12,19 +12,18 @@ import os
 import datetime
 import re
 
-def get_version_from_memory_bank():
-    """Get current version from Memory Bank's productContext.md."""
+def get_version():
+    """Get current version from version.txt."""
     try:
-        with open(os.path.join("memory-bank", "productContext.md"), "r", encoding="utf-8") as f:
-            content = f.read()
-            version_match = re.search(r"Current Version: (\d+\.\d+\.\d+)", content)
-            if version_match:
-                return version_match.group(1)
+        with open("version.txt", "r", encoding="utf-8") as f:
+            version = f.read().strip()
+            if version:
+                return version
     except Exception:
         pass
     return "0.0.0"  # Default version if not found
 
-VERSION = get_version_from_memory_bank()
+VERSION = get_version()
 
 # --- Network Configuration ---
 # Get network settings from environment variables or use defaults
