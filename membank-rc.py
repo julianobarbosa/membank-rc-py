@@ -592,7 +592,7 @@ def do_check_updates(script_path=None):
         if latest_version:
             print(f"\nNew version available: {latest_version} (current: {VERSION})")
             if prompt_yes_no("Would you like to update the script?"):
-                if update_script(script_path):
+                if update_script(script_path, new_version=latest_version):
                     print("\nPlease restart the script to use the new version.")
                     return  # Exit after script update
             else:
