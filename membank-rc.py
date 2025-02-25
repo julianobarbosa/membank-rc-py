@@ -262,17 +262,68 @@ def update_gitignore():
                 print(f"Added '{line}' to .gitignore.")
     print("Updated .gitignore.")
 
-def get_remote_file_info(url):
-    """Get the last modified time of a remote file."""
-    try:
-        with urllib.request.urlopen(url) as response:
-            return {
-                'last_modified': response.headers.get('last-modified'),
-                'content': response.read().decode('utf-8')
-            }
-    except Exception as e:
-        print(f"Error checking remote file: {e}")
-        return None
+def get_remote_file_info(url, max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOUT, read_timeout=READ_TIMEOUT):
+    """
+    Get information about a remote file including last modified time and content.
+    
+    Args:
+        url: The URL to check
+        max_retries: Maximum number of retry attempts
+        connect_timeout: Connection timeout in seconds
+        read_timeout: Read timeout in seconds
+    
+    Returns:
+        Dict with 'last_modified' and 'content' if successful, None if failed
+    """
+    retry_count = 0
+    last_error = None
+    
+    while retry_count <= max_retries:
+        try:
+            if retry_count > 0:
+                backoff = 2 ** retry_count
+                print(f"Retry attempt {retry_count}/{max_retries} (waiting {backoff}s)...")
+                time.sleep(backoff)
+            
+            opener = urllib.request.build_opener()
+            opener.addheaders = [('User-Agent', f'membank-rc/{VERSION}')]
+            
+            with opener.open(url, timeout=(connect_timeout, read_timeout)) as response:
+                return {
+                    'last_modified': response.headers.get('last-modified'),
+                    'content': response.read().decode('utf-8')
+                }
+                
+        except urllib.error.URLError as e:
+            last_error = e
+            error_msg = str(e.reason) if hasattr(e, 'reason') else str(e)
+            
+            if isinstance(e.reason, socket.timeout):
+                print(f"Timeout error checking {url}: {error_msg}")
+            elif isinstance(e.reason, socket.gaierror):
+                print(f"Network error checking {url}: Could not resolve host - {error_msg}")
+            else:
+                print(f"Error checking {url}: {error_msg}")
+                
+        except socket.timeout as e:
+            last_error = e
+            print(f"Timeout error checking {url}: {e}")
+            
+        except Exception as e:
+            last_error = e
+            print(f"Unexpected error checking {url}: {e}")
+        
+        retry_count += 1
+    
+    # If we get here, all retries failed
+    print(f"\nFailed to check {url} after {max_retries} attempts.")
+    print(f"Last error: {last_error}")
+    if isinstance(last_error, urllib.error.URLError) and isinstance(last_error.reason, socket.timeout):
+        print("\nTroubleshooting suggestions:")
+        print("1. Check your internet connection")
+        print("2. The server might be temporarily unavailable")
+        print(f"3. Try increasing the timeouts (current: connect={connect_timeout}s, read={read_timeout}s)")
+    return None
 
 def verify_installation():
     """Ensure the three .clinerules files and productContext.md exist."""
