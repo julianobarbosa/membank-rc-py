@@ -604,10 +604,13 @@ def do_check_updates(script_path=None):
     do_update_extension()
 
 def do_update_extension():
-    """Check for and apply updates to .clinerules files."""
+    """Check for and apply updates to .clinerules files and Memory Bank version."""
     print("=== Checking for Roo Code Memory Bank Extension Updates ===\n")
     
     updates_available = False
+    version_updated = False
+    current_version = VERSION
+    
     for local_file, remote_url in clinerules_files.items():
         if not os.path.exists(local_file):
             print(f"Warning: {local_file} not found. Skipping update check.")
