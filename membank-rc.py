@@ -635,6 +635,12 @@ def do_update_extension():
     if not updates_available:
         print("\nAll .clinerules files are up to date!")
     else:
+        # Increment version if updates were applied
+        new_version = increment_version(current_version, 'patch')
+        if update_memory_bank_version(new_version):
+            print(f"\nMemory Bank version updated to {new_version}")
+        else:
+            print("\nWarning: Failed to update Memory Bank version")
         print("\nUpdate process completed.")
 
 # --- Command Functions ---
