@@ -403,14 +403,25 @@ def check_script_version(max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOU
                 
         except urllib.error.URLError as e:
             last_error = e
-            error_msg = str(e.reason) if hasattr(e, 'reason') else str(e)
-            
-            if isinstance(e.reason, socket.timeout):
-                print(f"Timeout error checking version: {error_msg}")
-            elif isinstance(e.reason, socket.gaierror):
-                print(f"Network error: Could not resolve host - {error_msg}")
-            else:
+            if hasattr(e, 'code'):
+                # HTTP error with status code
+                error_msg = f"HTTP {e.code}"
+                if e.code == 404:
+                    error_msg += " (version.txt not found on GitHub)"
+                elif e.code == 403:
+                    error_msg += " (access forbidden - rate limit?)"
+                else:
+                    error_msg += f" ({str(e.reason) if hasattr(e, 'reason') else 'unknown error'})"
                 print(f"Error checking version: {error_msg}")
+            else:
+                # Network-level error
+                error_msg = str(e.reason) if hasattr(e, 'reason') else str(e)
+                if isinstance(e.reason, socket.timeout):
+                    print(f"Timeout error checking version: {error_msg}")
+                elif isinstance(e.reason, socket.gaierror):
+                    print(f"Network error: Could not resolve host - {error_msg}")
+                else:
+                    print(f"Network error checking version: {error_msg}")
                 
         except socket.timeout as e:
             last_error = e
@@ -720,4 +731,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
