@@ -348,6 +348,18 @@ def backup_script(script_path):
         print(f"Error creating backup: {e}")
         return False
 
+def parse_version(version_str):
+    """Parse a version string into a tuple of integers."""
+    try:
+        # Strip any whitespace and validate format
+        version_str = version_str.strip()
+        if not version_str or not all(part.isdigit() for part in version_str.split('.')):
+            return (0, 0, 0)
+        # Parse into tuple of integers
+        return tuple(map(int, version_str.split('.')))
+    except (AttributeError, ValueError):
+        return (0, 0, 0)
+
 def check_script_version(max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOUT, read_timeout=READ_TIMEOUT):
     """
     Check if a newer version of the script is available.
@@ -376,7 +388,7 @@ def check_script_version(max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOU
             
             with opener.open(VERSION_URL, timeout=(connect_timeout, read_timeout)) as response:
                 latest_version = response.read().decode('utf-8').strip()
-                if latest_version > VERSION:
+                if parse_version(latest_version) > parse_version(VERSION):
                     return latest_version
                 print("Script is up to date.")
                 return None
