@@ -95,7 +95,7 @@ def download_file(url, dest, max_retries=3, connect_timeout=10, read_timeout=30)
             opener = urllib.request.build_opener()
             opener.addheaders = [('User-Agent', f'membank-rc/{VERSION}')]
             
-            with opener.open(url, timeout=(connect_timeout, read_timeout)) as response:
+            with opener.open(url, timeout=connect_timeout) as response:
                 content = response.read().decode("utf-8")
             
             with open(dest, "w", encoding="utf-8") as f:
@@ -288,7 +288,7 @@ def get_remote_file_info(url, max_retries=MAX_RETRIES, connect_timeout=CONNECT_T
             opener = urllib.request.build_opener()
             opener.addheaders = [('User-Agent', f'membank-rc/{VERSION}')]
             
-            with opener.open(url, timeout=(connect_timeout, read_timeout)) as response:
+            with opener.open(url, timeout=connect_timeout) as response:
                 return {
                     'last_modified': response.headers.get('last-modified'),
                     'content': response.read().decode('utf-8')
@@ -386,7 +386,7 @@ def check_script_version(max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOU
             opener = urllib.request.build_opener()
             opener.addheaders = [('User-Agent', f'membank-rc/{VERSION}')]
             
-            with opener.open(VERSION_URL, timeout=(connect_timeout, read_timeout)) as response:
+            with opener.open(VERSION_URL, timeout=connect_timeout) as response:
                 latest_version = response.read().decode('utf-8').strip()
                 current = parse_version(VERSION)
                 latest = parse_version(latest_version)
@@ -463,7 +463,7 @@ def update_script(script_path, max_retries=MAX_RETRIES, connect_timeout=CONNECT_
             opener = urllib.request.build_opener()
             opener.addheaders = [('User-Agent', f'membank-rc/{VERSION}')]
             
-            with opener.open(SCRIPT_URL, timeout=(connect_timeout, read_timeout)) as response:
+            with opener.open(SCRIPT_URL, timeout=connect_timeout) as response:
                 new_content = response.read().decode('utf-8')
             
             # Write new content
@@ -720,3 +720,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
