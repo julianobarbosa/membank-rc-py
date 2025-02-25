@@ -9,8 +9,22 @@ import time
 import socket
 import os
 
-# --- Version Information ---
-VERSION = "1.2.0"
+import datetime
+import re
+
+def get_version_from_memory_bank():
+    """Get current version from Memory Bank's productContext.md."""
+    try:
+        with open(os.path.join("memory-bank", "productContext.md"), "r", encoding="utf-8") as f:
+            content = f.read()
+            version_match = re.search(r"Current Version: (\d+\.\d+\.\d+)", content)
+            if version_match:
+                return version_match.group(1)
+    except Exception:
+        pass
+    return "0.0.0"  # Default version if not found
+
+VERSION = get_version_from_memory_bank()
 
 # --- Network Configuration ---
 # Get network settings from environment variables or use defaults
@@ -351,27 +365,69 @@ def backup_script(script_path):
 def parse_version(version_str):
     """Parse a version string into a tuple of integers."""
     try:
-        # Strip any whitespace and validate format
         version_str = version_str.strip()
         if not version_str or not all(part.isdigit() for part in version_str.split('.')):
             return (0, 0, 0)
-        # Parse into tuple of integers
         return tuple(map(int, version_str.split('.')))
     except (AttributeError, ValueError):
         return (0, 0, 0)
 
+def increment_version(version_str, level='patch'):
+    """
+    Increment version at specified level (major, minor, or patch).
+    Returns the new version string.
+    """
+    major, minor, patch = parse_version(version_str)
+    if level == 'major':
+        return f"{major + 1}.0.0"
+    elif level == 'minor':
+        return f"{major}.{minor + 1}.0"
+    else:  # patch
+        return f"{major}.{minor}.{patch + 1}"
+
+def update_memory_bank_version(new_version):
+    """Update version in Memory Bank's productContext.md."""
+    try:
+        prod_context_path = os.path.join("memory-bank", "productContext.md")
+        with open(prod_context_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Update current version
+        content = re.sub(
+            r"Current Version: [\d\.]+",
+            f"Current Version: {new_version}",
+            content
+        )
+
+        # Add to version history if not present
+        history_marker = "Version History:"
+        if history_marker in content:
+            history_section = content.split(history_marker)[1].split("\n\n")[0]
+            if new_version not in history_section:
+                today = datetime.datetime.now().strftime("%Y-%m-%d")
+                history_entry = f"  * {new_version} - {today} - Memory Bank update"
+                content = content.replace(
+                    history_marker,
+                    f"{history_marker}\n{history_entry}"
+                )
+
+        # Update last updated date
+        today = datetime.datetime.now().strftime("%Y-%m-%d")
+        content = re.sub(
+            r"Last Updated: [\d\-]+",
+            f"Last Updated: {today}",
+            content
+        )
+
+        with open(prod_context_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return True
+    except Exception as e:
+        print(f"Error updating Memory Bank version: {e}")
+        return False
+
 def check_script_version(max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOUT, read_timeout=READ_TIMEOUT):
-    """
-    Check if a newer version of the script is available.
-    
-    Args:
-        max_retries: Maximum number of retry attempts
-        connect_timeout: Connection timeout in seconds
-        read_timeout: Read timeout in seconds
-        
-    Returns:
-        Latest version string if newer version available, None otherwise
-    """
+    """Check if a newer version is available from GitHub."""
     print("Checking for script updates...")
     retry_count = 0
     last_error = None
@@ -391,7 +447,6 @@ def check_script_version(max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOU
                 current = parse_version(VERSION)
                 latest = parse_version(latest_version)
                 
-                # Ensure both versions are valid
                 if latest == (0, 0, 0):
                     print("Warning: Unable to parse latest version number")
                     return None
