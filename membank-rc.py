@@ -428,6 +428,17 @@ def update_memory_bank_version(new_version):
 def check_script_version(max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOUT, read_timeout=READ_TIMEOUT):
     """Check if a newer version is available from GitHub."""
     print("Checking for script updates...")
+    
+    # First try to get version from local file
+    try:
+        with open("version.txt", "r", encoding="utf-8") as f:
+            local_version = f.read().strip()
+            if local_version:
+                print(f"Using local version: {local_version}")
+                return None  # No update needed if we can read local version
+    except Exception:
+        pass  # If local file can't be read, continue with remote check
+    
     retry_count = 0
     last_error = None
     
