@@ -348,45 +348,145 @@ def backup_script(script_path):
         print(f"Error creating backup: {e}")
         return False
 
-def check_script_version():
-    """Check if a newer version of the script is available."""
-    try:
-        print("Checking for script updates...")
-        with urllib.request.urlopen(VERSION_URL) as response:
-            latest_version = response.read().decode('utf-8').strip()
-            
-        if latest_version > VERSION:
-            return latest_version
-        return None
-    except Exception as e:
-        print(f"Error checking script version: {e}")
-        return None
-
-def update_script(script_path):
-    """Update the script to the latest version."""
-    try:
-        # Get the latest script content
-        print("Downloading latest version...")
-        with urllib.request.urlopen(SCRIPT_URL) as response:
-            new_content = response.read().decode('utf-8')
-            
-        # Create backup first
-        if not backup_script(script_path):
-            return False
-            
-        # Write new content
-        with open(script_path, 'w', encoding='utf-8') as f:
-            f.write(new_content)
+def check_script_version(max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOUT, read_timeout=READ_TIMEOUT):
+    """
+    Check if a newer version of the script is available.
+    
+    Args:
+        max_retries: Maximum number of retry attempts
+        connect_timeout: Connection timeout in seconds
+        read_timeout: Read timeout in seconds
         
-        # On Unix-like systems, ensure the file is executable
-        if os.name != 'nt':
-            os.chmod(script_path, 0o755)
+    Returns:
+        Latest version string if newer version available, None otherwise
+    """
+    print("Checking for script updates...")
+    retry_count = 0
+    last_error = None
+    
+    while retry_count <= max_retries:
+        try:
+            if retry_count > 0:
+                backoff = 2 ** retry_count
+                print(f"Retry attempt {retry_count}/{max_retries} (waiting {backoff}s)...")
+                time.sleep(backoff)
             
-        print("Script successfully updated!")
-        return True
-    except Exception as e:
-        print(f"Error updating script: {e}")
-        return False
+            opener = urllib.request.build_opener()
+            opener.addheaders = [('User-Agent', f'membank-rc/{VERSION}')]
+            
+            with opener.open(VERSION_URL, timeout=(connect_timeout, read_timeout)) as response:
+                latest_version = response.read().decode('utf-8').strip()
+                if latest_version > VERSION:
+                    return latest_version
+                print("Script is up to date.")
+                return None
+                
+        except urllib.error.URLError as e:
+            last_error = e
+            error_msg = str(e.reason) if hasattr(e, 'reason') else str(e)
+            
+            if isinstance(e.reason, socket.timeout):
+                print(f"Timeout error checking version: {error_msg}")
+            elif isinstance(e.reason, socket.gaierror):
+                print(f"Network error: Could not resolve host - {error_msg}")
+            else:
+                print(f"Error checking version: {error_msg}")
+                
+        except socket.timeout as e:
+            last_error = e
+            print(f"Timeout error checking version: {e}")
+            
+        except Exception as e:
+            last_error = e
+            print(f"Unexpected error checking version: {e}")
+        
+        retry_count += 1
+    
+    # If we get here, all retries failed
+    print(f"\nFailed to check version after {max_retries} attempts.")
+    print(f"Last error: {last_error}")
+    if isinstance(last_error, urllib.error.URLError) and isinstance(last_error.reason, socket.timeout):
+        print("\nTroubleshooting suggestions:")
+        print("1. Check your internet connection")
+        print("2. The server might be temporarily unavailable")
+        print(f"3. Try increasing the timeouts (current: connect={connect_timeout}s, read={read_timeout}s)")
+    return None
+
+def update_script(script_path, max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOUT, read_timeout=READ_TIMEOUT):
+    """
+    Update the script to the latest version.
+    
+    Args:
+        script_path: Path to the script file to update
+        max_retries: Maximum number of retry attempts
+        connect_timeout: Connection timeout in seconds
+        read_timeout: Read timeout in seconds
+    
+    Returns:
+        True if update successful, False otherwise
+    """
+    retry_count = 0
+    last_error = None
+    
+    while retry_count <= max_retries:
+        try:
+            print("Downloading latest version...")
+            if retry_count > 0:
+                backoff = 2 ** retry_count
+                print(f"Retry attempt {retry_count}/{max_retries} (waiting {backoff}s)...")
+                time.sleep(backoff)
+            
+            # Create backup first
+            if not backup_script(script_path):
+                return False
+                
+            opener = urllib.request.build_opener()
+            opener.addheaders = [('User-Agent', f'membank-rc/{VERSION}')]
+            
+            with opener.open(SCRIPT_URL, timeout=(connect_timeout, read_timeout)) as response:
+                new_content = response.read().decode('utf-8')
+            
+            # Write new content
+            with open(script_path, 'w', encoding='utf-8') as f:
+                f.write(new_content)
+            
+            # On Unix-like systems, ensure the file is executable
+            if os.name != 'nt':
+                os.chmod(script_path, 0o755)
+                
+            print("Script successfully updated!")
+            return True
+            
+        except urllib.error.URLError as e:
+            last_error = e
+            error_msg = str(e.reason) if hasattr(e, 'reason') else str(e)
+            
+            if isinstance(e.reason, socket.timeout):
+                print(f"Timeout error downloading update: {error_msg}")
+            elif isinstance(e.reason, socket.gaierror):
+                print(f"Network error: Could not resolve host - {error_msg}")
+            else:
+                print(f"Error downloading update: {error_msg}")
+                
+        except socket.timeout as e:
+            last_error = e
+            print(f"Timeout error downloading update: {e}")
+            
+        except Exception as e:
+            last_error = e
+            print(f"Unexpected error updating script: {e}")
+        
+        retry_count += 1
+    
+    # If we get here, all retries failed
+    print(f"\nFailed to update script after {max_retries} attempts.")
+    print(f"Last error: {last_error}")
+    if isinstance(last_error, urllib.error.URLError) and isinstance(last_error.reason, socket.timeout):
+        print("\nTroubleshooting suggestions:")
+        print("1. Check your internet connection")
+        print("2. The server might be temporarily unavailable")
+        print(f"3. Try increasing the timeouts (current: connect={connect_timeout}s, read={read_timeout}s)")
+    return False
 
 def do_check_updates(script_path=None):
     """Check for and apply updates to both the script and .clinerules files."""
