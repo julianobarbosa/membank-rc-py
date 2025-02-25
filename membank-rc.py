@@ -5,9 +5,35 @@ import sys
 import urllib.request
 import shutil
 import sysconfig
+import time
+import socket
+import os
 
-# --- Version Information ---
-VERSION = "1.2.0"
+import datetime
+import re
+
+def get_version():
+    """Get current version from GitHub releases."""
+    try:
+        opener = urllib.request.build_opener()
+        opener.addheaders = [('User-Agent', 'membank-rc/0.0.0')]
+        url = "https://api.github.com/repos/heratiki/membank-rc-py/releases/latest"
+        
+        with opener.open(url, timeout=CONNECT_TIMEOUT) as response:
+            data = response.read().decode('utf-8')
+            release_info = eval(data)  # Safe since we trust the GitHub API response
+            return release_info.get('tag_name', '0.0.0').lstrip('v')
+    except Exception:
+        # If we can't reach GitHub API, return default version
+        return "0.0.0"
+
+VERSION = get_version()
+
+# --- Network Configuration ---
+# Get network settings from environment variables or use defaults
+CONNECT_TIMEOUT = int(os.getenv('MEMBANK_CONNECT_TIMEOUT', '10'))
+READ_TIMEOUT = int(os.getenv('MEMBANK_READ_TIMEOUT', '30'))
+MAX_RETRIES = int(os.getenv('MEMBANK_MAX_RETRIES', '3'))
 
 # --- Version Check ---
 # Ensure the script is run with Python 3.10 or higher
@@ -28,7 +54,11 @@ expected_files = [
     os.path.join("memory-bank", "systemPatterns.md"),
 ]
 
-# URLs for downloading the .clinerules files
+# URLs for downloading files
+GITHUB_API_URL = "https://api.github.com/repos/heratiki/membank-rc-py"
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/heratiki/membank-rc-py/main"
+SCRIPT_URL = f"{GITHUB_RAW_URL}/membank-rc.py"
+
 clinerules_files = {
     ".clinerules-architect": "https://raw.githubusercontent.com/GreatScottyMac/roo-code-memory-bank/main/.clinerules-architect",
     ".clinerules-ask":       "https://raw.githubusercontent.com/GreatScottyMac/roo-code-memory-bank/main/.clinerules-ask",
@@ -56,70 +86,178 @@ def create_memory_bank_folder():
         os.makedirs("memory-bank")
         print("Created 'memory-bank' folder.")
 
-def download_file(url, dest):
-    """Download a file from a URL and write it to a destination path."""
-    try:
-        print(f"Downloading {dest}...")
-        with urllib.request.urlopen(url) as response:
-            content = response.read().decode("utf-8")
-        with open(dest, "w", encoding="utf-8") as f:
-            f.write(content)
-        print(f"Downloaded {dest}.")
-    except Exception as e:
-        print(f"Error downloading {dest}: {e}")
-        sys.exit(1)
+def download_file(url, dest, max_retries=3, connect_timeout=10, read_timeout=30):
+    """
+    Download a file from a URL and write it to a destination path.
+    
+    Args:
+        url: The URL to download from
+        dest: The destination path to save to
+        max_retries: Maximum number of retry attempts (default: 3)
+        connect_timeout: Connection timeout in seconds (default: 10)
+        read_timeout: Read timeout in seconds (default: 30)
+    """
+    retry_count = 0
+    last_error = None
+    
+    while retry_count <= max_retries:
+        try:
+            print(f"Downloading {dest}...")
+            if retry_count > 0:
+                # Calculate backoff time: 2^n seconds
+                backoff = 2 ** retry_count
+                print(f"Retry attempt {retry_count}/{max_retries} (waiting {backoff}s)...")
+                time.sleep(backoff)
+            
+            opener = urllib.request.build_opener()
+            opener.addheaders = [('User-Agent', f'membank-rc/{VERSION}')]
+            
+            with opener.open(url, timeout=connect_timeout) as response:
+                content = response.read().decode("utf-8")
+            
+            with open(dest, "w", encoding="utf-8") as f:
+                f.write(content)
+            
+            print(f"Successfully downloaded {dest}.")
+            return True
+            
+        except urllib.error.URLError as e:
+            last_error = e
+            error_msg = str(e.reason) if hasattr(e, 'reason') else str(e)
+            
+            if isinstance(e.reason, socket.timeout):
+                print(f"Timeout error: {error_msg}")
+            elif isinstance(e.reason, socket.gaierror):
+                print(f"Network error: Could not resolve host - {error_msg}")
+            else:
+                print(f"Download error: {error_msg}")
+                
+        except socket.timeout as e:
+            last_error = e
+            print(f"Timeout error: {e}")
+            
+        except Exception as e:
+            last_error = e
+            print(f"Unexpected error: {e}")
+        
+        retry_count += 1
+        
+    # If we get here, all retries failed
+    print(f"\nFailed to download {dest} after {max_retries} attempts.")
+    print(f"Last error: {last_error}")
+    if isinstance(last_error, urllib.error.URLError) and isinstance(last_error.reason, socket.timeout):
+        print("\nTroubleshooting suggestions:")
+        print("1. Check your internet connection")
+        print("2. The server might be temporarily unavailable")
+        print(f"3. Try increasing the timeouts (current: connect={connect_timeout}s, read={read_timeout}s)")
+    sys.exit(1)
 
 def generate_product_context():
-    """Generate memory-bank/productContext.md by extracting a brief project description from a README file."""
+    """Generate memory-bank/productContext.md by extracting project description from README and adding efficiency guidelines."""
     description = None
-    # Define potential README file names
     readme_files = ["README.md", "readme.md", "README.txt", "readme.txt"]
+    
+    # Efficiency-focused template
+    efficiency_template = """
+# Product Context
+
+## Project Overview
+
+{project_description}
+
+## Development Guidelines
+
+### Efficiency & Cost Optimization
+
+- Do NOT generate code unless explicitly requested
+- Do NOT provide excessive details or descriptions unless necessary
+- Keep all responses structured, concise, and actionable
+- Always seek approval before expanding on details or switching modes
+
+### Best Practices
+
+1. Gather Full Context Before Planning
+   - Ask only critical clarifying questions
+   - Identify key objectives and constraints
+   - Use existing context when sufficient
+
+2. Design & Development Efficiency
+   - Follow modern development principles
+   - Optimize for performance and maintainability
+   - Prioritize modular, reusable solutions
+   - Consider scalability and long-term costs
+
+3. Token-Efficient Development
+   - Break features into logical phases
+   - Focus on essential architecture
+   - Use efficient tools and frameworks
+   - Provide concise, actionable roadmaps
+   - Seek approval before detailed implementation
+"""
+
+    # Extract project description from README
     for readme in readme_files:
         if os.path.exists(readme):
             with open(readme, "r", encoding="utf-8") as f:
                 content = f.read()
-            # Try "## Project Description" first
-            if "## Project Description" in content:
-                after_marker = content.split("## Project Description", 1)[1].strip()
-            # Otherwise, try "## What it does"
-            elif "## What it does" in content:
-                after_marker = content.split("## What it does", 1)[1].strip()
-            else:
-                after_marker = content
 
-            # Split the content by headers if any appear
-            lines = after_marker.splitlines()
-            collected = []
-            for line in lines:
-                # Stop if a new header is met.
-                if line.strip().startswith("##"):
+            # Try to find project description section
+            sections = [
+                ("## Project Description", "## "),
+                ("## What it does", "## "),
+                ("# Project Description", "# "),
+                ("# What it does", "# ")
+            ]
+
+            for section_start, section_end in sections:
+                if section_start in content:
+                    parts = content.split(section_start, 1)[1].split(section_end, 1)
+                    description = parts[0] if len(parts) > 1 else parts[0]
+                    description = description.strip()
                     break
-                if line.strip():
-                    collected.append(line.strip())
-                # Gather up to first 2 non-empty lines
-                if len(collected) == 2:
-                    break
-            if collected:
-                # Join lines and extract only the first sentence if possible.
-                candidate = " ".join(collected)
-                # Basic heuristic: take text up to first period.
-                if "." in candidate:
-                    candidate = candidate.split(".", 1)[0] + "."
-                description = candidate
+
+            if not description:
+                # If no section found, use first paragraph after first heading
+                lines = content.splitlines()
+                collecting = False
+                collected = []
+
+                for line in lines:
+                    if line.startswith('#') and not collecting:
+                        collecting = True
+                        continue
+                    if collecting:
+                        if not line.strip():
+                            if collected:
+                                break
+                            continue
+                        if line.startswith('#'):
+                            break
+                        collected.append(line.strip())
+
+                if collected:
+                    description = ' '.join(collected)
+
+            if description:
                 break
 
     if not description:
         description = "No project description available."
 
+    # Format the content with the extracted description
+    content = efficiency_template.format(project_description=description)
+
+    # Write to productContext.md
     prod_context_path = os.path.join("memory-bank", "productContext.md")
     if os.path.exists(prod_context_path):
         if not prompt_yes_no(f"{prod_context_path} already exists. Overwrite?"):
             print("Skipping productContext.md creation.")
             return
+
     with open(prod_context_path, "w", encoding="utf-8") as f:
-        f.write("# Product Context\n\n")
-        f.write(description + "\n")
-    print("Created memory-bank/productContext.md with project description.")
+        f.write(content)
+
+    print("Created memory-bank/productContext.md with project description and efficiency guidelines.")
 def update_gitignore():
     """Ask the user to append extension files/folder to .gitignore."""
     ignore_lines = [
@@ -141,17 +279,68 @@ def update_gitignore():
                 print(f"Added '{line}' to .gitignore.")
     print("Updated .gitignore.")
 
-def get_remote_file_info(url):
-    """Get the last modified time of a remote file."""
-    try:
-        with urllib.request.urlopen(url) as response:
-            return {
-                'last_modified': response.headers.get('last-modified'),
-                'content': response.read().decode('utf-8')
-            }
-    except Exception as e:
-        print(f"Error checking remote file: {e}")
-        return None
+def get_remote_file_info(url, max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOUT, read_timeout=READ_TIMEOUT):
+    """
+    Get information about a remote file including last modified time and content.
+    
+    Args:
+        url: The URL to check
+        max_retries: Maximum number of retry attempts
+        connect_timeout: Connection timeout in seconds
+        read_timeout: Read timeout in seconds
+    
+    Returns:
+        Dict with 'last_modified' and 'content' if successful, None if failed
+    """
+    retry_count = 0
+    last_error = None
+    
+    while retry_count <= max_retries:
+        try:
+            if retry_count > 0:
+                backoff = 2 ** retry_count
+                print(f"Retry attempt {retry_count}/{max_retries} (waiting {backoff}s)...")
+                time.sleep(backoff)
+            
+            opener = urllib.request.build_opener()
+            opener.addheaders = [('User-Agent', f'membank-rc/{VERSION}')]
+            
+            with opener.open(url, timeout=connect_timeout) as response:
+                return {
+                    'last_modified': response.headers.get('last-modified'),
+                    'content': response.read().decode('utf-8')
+                }
+                
+        except urllib.error.URLError as e:
+            last_error = e
+            error_msg = str(e.reason) if hasattr(e, 'reason') else str(e)
+            
+            if isinstance(e.reason, socket.timeout):
+                print(f"Timeout error checking {url}: {error_msg}")
+            elif isinstance(e.reason, socket.gaierror):
+                print(f"Network error checking {url}: Could not resolve host - {error_msg}")
+            else:
+                print(f"Error checking {url}: {error_msg}")
+                
+        except socket.timeout as e:
+            last_error = e
+            print(f"Timeout error checking {url}: {e}")
+            
+        except Exception as e:
+            last_error = e
+            print(f"Unexpected error checking {url}: {e}")
+        
+        retry_count += 1
+    
+    # If we get here, all retries failed
+    print(f"\nFailed to check {url} after {max_retries} attempts.")
+    print(f"Last error: {last_error}")
+    if isinstance(last_error, urllib.error.URLError) and isinstance(last_error.reason, socket.timeout):
+        print("\nTroubleshooting suggestions:")
+        print("1. Check your internet connection")
+        print("2. The server might be temporarily unavailable")
+        print(f"3. Try increasing the timeouts (current: connect={connect_timeout}s, read={read_timeout}s)")
+    return None
 
 def verify_installation():
     """Ensure the three .clinerules files and productContext.md exist."""
@@ -163,11 +352,285 @@ def verify_installation():
             all_good = False
     return all_good
 
+def backup_script(script_path):
+    """Create a backup of the script with timestamp."""
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = f"{script_path}.{timestamp}.backup"
+    try:
+        shutil.copy2(script_path, backup_path)
+        print(f"Created backup at: {backup_path}")
+        return True
+    except Exception as e:
+        print(f"Error creating backup: {e}")
+        return False
+
+def parse_version(version_str):
+    """Parse a version string into a tuple of integers."""
+    try:
+        version_str = version_str.strip()
+        if not version_str or not all(part.isdigit() for part in version_str.split('.')):
+            return (0, 0, 0)
+        return tuple(map(int, version_str.split('.')))
+    except (AttributeError, ValueError):
+        return (0, 0, 0)
+
+def increment_version(version_str, level='patch'):
+    """
+    Increment version at specified level (major, minor, or patch).
+    Returns the new version string.
+    """
+    major, minor, patch = parse_version(version_str)
+    if level == 'major':
+        return f"{major + 1}.0.0"
+    elif level == 'minor':
+        return f"{major}.{minor + 1}.0"
+    else:  # patch
+        return f"{major}.{minor}.{patch + 1}"
+
+def update_memory_bank_version(new_version):
+    """Update version in Memory Bank's productContext.md."""
+    try:
+        prod_context_path = os.path.join("memory-bank", "productContext.md")
+        with open(prod_context_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Update current version
+        content = re.sub(
+            r"Current Version: [\d\.]+",
+            f"Current Version: {new_version}",
+            content
+        )
+
+        # Add to version history if not present
+        history_marker = "Version History:"
+        if history_marker in content:
+            history_section = content.split(history_marker)[1].split("\n\n")[0]
+            if new_version not in history_section:
+                today = datetime.datetime.now().strftime("%Y-%m-%d")
+                history_entry = f"  * {new_version} - {today} - Memory Bank update"
+                content = content.replace(
+                    history_marker,
+                    f"{history_marker}\n{history_entry}"
+                )
+
+        # Update last updated date
+        today = datetime.datetime.now().strftime("%Y-%m-%d")
+        content = re.sub(
+            r"Last Updated: [\d\-]+",
+            f"Last Updated: {today}",
+            content
+        )
+
+        with open(prod_context_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return True
+    except Exception as e:
+        print(f"Error updating Memory Bank version: {e}")
+        return False
+
+def check_script_version(max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOUT, read_timeout=READ_TIMEOUT):
+    """Check if a newer version is available from GitHub releases."""
+    print("Checking for script updates...")
+    
+    retry_count = 0
+    last_error = None
+    
+    while retry_count <= max_retries:
+        try:
+            if retry_count > 0:
+                backoff = 2 ** retry_count
+                print(f"Retry attempt {retry_count}/{max_retries} (waiting {backoff}s)...")
+                time.sleep(backoff)
+            
+            opener = urllib.request.build_opener()
+            opener.addheaders = [('User-Agent', f'membank-rc/{VERSION}')]
+            
+            with opener.open(f"{GITHUB_API_URL}/releases/latest", timeout=connect_timeout) as response:
+                if response.headers.get('X-RateLimit-Remaining', '').isdigit():
+                    remaining = int(response.headers['X-RateLimit-Remaining'])
+                    if remaining < 10:
+                        print(f"Warning: GitHub API rate limit low ({remaining} requests remaining)")
+                
+                data = response.read().decode('utf-8')
+                release_info = eval(data)  # Safe since we trust the GitHub API response
+                latest_version = release_info.get('tag_name', '0.0.0').lstrip('v')
+                
+                current = parse_version(VERSION)
+                latest = parse_version(latest_version)
+                
+                if latest == (0, 0, 0):
+                    print("Warning: Unable to parse latest version number")
+                    return None
+                    
+                if latest > current:
+                    return latest_version
+                print("Script is up to date.")
+                return None
+                
+        except urllib.error.URLError as e:
+            last_error = e
+            if hasattr(e, 'code'):
+                # HTTP error with status code
+                error_msg = f"HTTP {e.code}"
+                if e.code == 404:
+                    error_msg += " (No releases found on GitHub)"
+                elif e.code == 403:
+                    error_msg += " (GitHub API rate limit exceeded)"
+                    # Check when rate limit resets
+                    try:
+                        reset_time = int(e.headers.get('X-RateLimit-Reset', 0))
+                        if reset_time:
+                            reset_datetime = datetime.datetime.fromtimestamp(reset_time)
+                            error_msg += f"\nRate limit will reset at {reset_datetime}"
+                    except:
+                        pass
+                else:
+                    error_msg += f" ({str(e.reason) if hasattr(e, 'reason') else 'unknown error'})"
+                print(f"Error checking version: {error_msg}")
+            else:
+                # Network-level error
+                error_msg = str(e.reason) if hasattr(e, 'reason') else str(e)
+                if isinstance(e.reason, socket.timeout):
+                    print(f"Timeout error checking version: {error_msg}")
+                elif isinstance(e.reason, socket.gaierror):
+                    print(f"Network error: Could not resolve host - {error_msg}")
+                else:
+                    print(f"Network error checking version: {error_msg}")
+                
+        except socket.timeout as e:
+            last_error = e
+            print(f"Timeout error checking version: {e}")
+            
+        except Exception as e:
+            last_error = e
+            print(f"Unexpected error checking version: {e}")
+        
+        retry_count += 1
+    
+    # If we get here, all retries failed
+    print(f"\nFailed to check version after {max_retries} attempts.")
+    print(f"Last error: {last_error}")
+    if isinstance(last_error, urllib.error.URLError) and isinstance(last_error.reason, socket.timeout):
+        print("\nTroubleshooting suggestions:")
+        print("1. Check your internet connection")
+        print("2. The server might be temporarily unavailable")
+        print(f"3. Try increasing the timeouts (current: connect={connect_timeout}s, read={read_timeout}s)")
+    return None
+
+def update_script(script_path, new_version=None, max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOUT, read_timeout=READ_TIMEOUT):
+    """
+    Update the script and Memory Bank to the latest version.
+    
+    Args:
+        script_path: Path to the script file to update
+        new_version: Optional version string to update to
+        max_retries: Maximum number of retry attempts
+        connect_timeout: Connection timeout in seconds
+        read_timeout: Read timeout in seconds
+    
+    Returns:
+        True if update successful, False otherwise
+    """
+    retry_count = 0
+    last_error = None
+    
+    while retry_count <= max_retries:
+        try:
+            print("Downloading latest version...")
+            if retry_count > 0:
+                backoff = 2 ** retry_count
+                print(f"Retry attempt {retry_count}/{max_retries} (waiting {backoff}s)...")
+                time.sleep(backoff)
+            
+            # Create backup first
+            if not backup_script(script_path):
+                return False
+                
+            opener = urllib.request.build_opener()
+            opener.addheaders = [('User-Agent', f'membank-rc/{VERSION}')]
+            
+            with opener.open(SCRIPT_URL, timeout=connect_timeout) as response:
+                new_content = response.read().decode('utf-8')
+            
+            # Write new content
+            with open(script_path, 'w', encoding='utf-8') as f:
+                f.write(new_content)
+            
+            # On Unix-like systems, ensure the file is executable
+            if os.name != 'nt':
+                os.chmod(script_path, 0o755)
+
+            # Update Memory Bank version if provided
+            if new_version and os.path.exists(os.path.join("memory-bank", "productContext.md")):
+                if update_memory_bank_version(new_version):
+                    print(f"Memory Bank version updated to {new_version}")
+                else:
+                    print("Warning: Failed to update Memory Bank version")
+                
+            print("Script successfully updated!")
+            return True
+            
+        except urllib.error.URLError as e:
+            last_error = e
+            error_msg = str(e.reason) if hasattr(e, 'reason') else str(e)
+            
+            if isinstance(e.reason, socket.timeout):
+                print(f"Timeout error downloading update: {error_msg}")
+            elif isinstance(e.reason, socket.gaierror):
+                print(f"Network error: Could not resolve host - {error_msg}")
+            else:
+                print(f"Error downloading update: {error_msg}")
+                
+        except socket.timeout as e:
+            last_error = e
+            print(f"Timeout error downloading update: {e}")
+            
+        except Exception as e:
+            last_error = e
+            print(f"Unexpected error updating script: {e}")
+        
+        retry_count += 1
+    
+    # If we get here, all retries failed
+    print(f"\nFailed to update script after {max_retries} attempts.")
+    print(f"Last error: {last_error}")
+    if isinstance(last_error, urllib.error.URLError) and isinstance(last_error.reason, socket.timeout):
+        print("\nTroubleshooting suggestions:")
+        print("1. Check your internet connection")
+        print("2. The server might be temporarily unavailable")
+        print(f"3. Try increasing the timeouts (current: connect={connect_timeout}s, read={read_timeout}s)")
+    return False
+
+def do_check_updates(script_path=None):
+    """Check for and apply updates to both the script and .clinerules files."""
+    print("=== Checking for Updates ===\n")
+    
+    # Check script updates first
+    if script_path:
+        latest_version = check_script_version()
+        if latest_version:
+            print(f"\nNew version available: {latest_version} (current: {VERSION})")
+            if prompt_yes_no("Would you like to update the script?"):
+                if update_script(script_path, new_version=latest_version):
+                    print("\nPlease restart the script to use the new version.")
+                    return  # Exit after script update
+            else:
+                print("Script update skipped.")
+        else:
+            print("\nScript is up to date.")
+    
+    # Then check .clinerules updates
+    do_update_extension()
+
 def do_update_extension():
-    """Check for and apply updates to .clinerules files."""
+    """Check for and apply updates to .clinerules files and Memory Bank version."""
     print("=== Checking for Roo Code Memory Bank Extension Updates ===\n")
     
     updates_available = False
+    version_updated = False
+    current_version = VERSION
+    
     for local_file, remote_url in clinerules_files.items():
         if not os.path.exists(local_file):
             print(f"Warning: {local_file} not found. Skipping update check.")
@@ -192,6 +655,12 @@ def do_update_extension():
     if not updates_available:
         print("\nAll .clinerules files are up to date!")
     else:
+        # Increment version if updates were applied
+        new_version = increment_version(current_version, 'patch')
+        if update_memory_bank_version(new_version):
+            print(f"\nMemory Bank version updated to {new_version}")
+        else:
+            print("\nWarning: Failed to update Memory Bank version")
         print("\nUpdate process completed.")
 
 # --- Command Functions ---
@@ -319,10 +788,15 @@ def main():
         help="Install this CLI tool into your Python Scripts directory for global access."
     )
     
-    # Subcommand to update .clinerules files
-    subparsers.add_parser(
+    # Subcommand to update script and .clinerules files
+    update_parser = subparsers.add_parser(
         "update",
-        help="Check for and apply updates to .clinerules files from the GitHub repository."
+        help="Check for and apply updates to both the script and .clinerules files."
+    )
+    update_parser.add_argument(
+        "--skip-script",
+        action="store_true",
+        help="Skip checking for script updates, only check .clinerules files."
     )
 
     # Global version flag
@@ -339,7 +813,10 @@ def main():
     elif args.command == "self-install":
         do_self_install()
     elif args.command == "update":
-        do_update_extension()
+        if args.skip_script:
+            do_update_extension()
+        else:
+            do_check_updates(os.path.abspath(__file__))
     else:
         parser.print_help()
         sys.exit(1)

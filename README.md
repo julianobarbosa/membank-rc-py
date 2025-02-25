@@ -132,6 +132,15 @@ your-project/
 
 Additional memory-bank files (activeContext.md, decisionLog.md, progress.md, systemPatterns.md) will be created by Roo during usage.
 
+## Version Management
+
+This project uses GitHub Releases for version management. You can:
+- Check the current version: `membank-rc --version`
+- Update to latest version: `membank-rc update`
+- View all releases: Visit the [GitHub Releases page](https://github.com/heratiki/membank-rc-py/releases)
+
+The tool automatically checks for updates and will notify you when a new version is available.
+
 ## License
 
 MIT License - See LICENSE file for details.
