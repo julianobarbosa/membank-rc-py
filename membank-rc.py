@@ -13,15 +13,19 @@ import datetime
 import re
 
 def get_version():
-    """Get current version from version.txt."""
+    """Get current version from GitHub releases."""
     try:
-        with open("version.txt", "r", encoding="utf-8") as f:
-            version = f.read().strip()
-            if version:
-                return version
+        opener = urllib.request.build_opener()
+        opener.addheaders = [('User-Agent', 'membank-rc/0.0.0')]
+        url = "https://api.github.com/repos/heratiki/membank-rc-py/releases/latest"
+        
+        with opener.open(url, timeout=CONNECT_TIMEOUT) as response:
+            data = response.read().decode('utf-8')
+            release_info = eval(data)  # Safe since we trust the GitHub API response
+            return release_info.get('tag_name', '0.0.0').lstrip('v')
     except Exception:
-        pass
-    return "0.0.0"  # Default version if not found
+        # If we can't reach GitHub API, return default version
+        return "0.0.0"
 
 VERSION = get_version()
 
@@ -51,9 +55,9 @@ expected_files = [
 ]
 
 # URLs for downloading files
+GITHUB_API_URL = "https://api.github.com/repos/heratiki/membank-rc-py"
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/heratiki/membank-rc-py/main"
 SCRIPT_URL = f"{GITHUB_RAW_URL}/membank-rc.py"
-VERSION_URL = f"{GITHUB_RAW_URL}/version.txt"
 
 clinerules_files = {
     ".clinerules-architect": "https://raw.githubusercontent.com/GreatScottyMac/roo-code-memory-bank/main/.clinerules-architect",
@@ -426,18 +430,8 @@ def update_memory_bank_version(new_version):
         return False
 
 def check_script_version(max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOUT, read_timeout=READ_TIMEOUT):
-    """Check if a newer version is available from GitHub."""
+    """Check if a newer version is available from GitHub releases."""
     print("Checking for script updates...")
-    
-    # First try to get version from local file
-    try:
-        with open("version.txt", "r", encoding="utf-8") as f:
-            local_version = f.read().strip()
-            if local_version:
-                print(f"Using local version: {local_version}")
-                return None  # No update needed if we can read local version
-    except Exception:
-        pass  # If local file can't be read, continue with remote check
     
     retry_count = 0
     last_error = None
@@ -452,8 +446,16 @@ def check_script_version(max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOU
             opener = urllib.request.build_opener()
             opener.addheaders = [('User-Agent', f'membank-rc/{VERSION}')]
             
-            with opener.open(VERSION_URL, timeout=connect_timeout) as response:
-                latest_version = response.read().decode('utf-8').strip()
+            with opener.open(f"{GITHUB_API_URL}/releases/latest", timeout=connect_timeout) as response:
+                if response.headers.get('X-RateLimit-Remaining', '').isdigit():
+                    remaining = int(response.headers['X-RateLimit-Remaining'])
+                    if remaining < 10:
+                        print(f"Warning: GitHub API rate limit low ({remaining} requests remaining)")
+                
+                data = response.read().decode('utf-8')
+                release_info = eval(data)  # Safe since we trust the GitHub API response
+                latest_version = release_info.get('tag_name', '0.0.0').lstrip('v')
+                
                 current = parse_version(VERSION)
                 latest = parse_version(latest_version)
                 
@@ -472,9 +474,17 @@ def check_script_version(max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOU
                 # HTTP error with status code
                 error_msg = f"HTTP {e.code}"
                 if e.code == 404:
-                    error_msg += " (version.txt not found on GitHub)"
+                    error_msg += " (No releases found on GitHub)"
                 elif e.code == 403:
-                    error_msg += " (access forbidden - rate limit?)"
+                    error_msg += " (GitHub API rate limit exceeded)"
+                    # Check when rate limit resets
+                    try:
+                        reset_time = int(e.headers.get('X-RateLimit-Reset', 0))
+                        if reset_time:
+                            reset_datetime = datetime.datetime.fromtimestamp(reset_time)
+                            error_msg += f"\nRate limit will reset at {reset_datetime}"
+                    except:
+                        pass
                 else:
                     error_msg += f" ({str(e.reason) if hasattr(e, 'reason') else 'unknown error'})"
                 print(f"Error checking version: {error_msg}")
