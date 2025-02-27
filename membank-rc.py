@@ -57,7 +57,7 @@ base_expected_files = [
     ".clinerules-code",
     ".clinerules-debug",
     ".roomodes",
-    os.path.join("memory-bank", "productContext.md"),
+    os.path.join("memory-bank", "productContext.yaml"),
 ]
 
 # Function to get the current list of expected files
@@ -81,15 +81,16 @@ def get_expected_files():
     if os.path.exists('.roomodes'):
         expected.append('.roomodes')
     
-    # Add any memory-bank/*.md files that exist locally
+    # Add any memory-bank/*.md and memory-bank/*.yaml files that exist locally
     if os.path.isdir('memory-bank'):
         for file in os.listdir('memory-bank'):
-            if file.endswith('.md'):
+            if file.endswith('.md') or file.endswith('.yaml'):
                 mb_file = os.path.join('memory-bank', file)
                 if mb_file not in expected:
                     expected.append(mb_file)
     
     return expected
+
 # URLs for downloading files
 GITHUB_API_URL = "https://api.github.com/repos/heratiki/membank-rc-py"
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/heratiki/membank-rc-py/main"
@@ -340,11 +341,11 @@ def download_file(url, dest, max_retries=3, connect_timeout=10, read_timeout=30)
     sys.exit(1)
 
 def generate_product_context():
-    """Generate memory-bank/productContext.md by extracting project description from README and adding efficiency guidelines."""
+    """Generate memory-bank/productContext.yaml by extracting project description from README and adding efficiency guidelines."""
     description = None
     readme_files = ["README.md", "readme.md", "README.txt", "readme.txt"]
     
-    # Efficiency-focused template
+    # Efficiency-focused template as YAML
     efficiency_template = """
 # Product Context
 
@@ -354,32 +355,28 @@ def generate_product_context():
 
 ## Development Guidelines
 
-### Efficiency & Cost Optimization
-
+### Efficiency & Cost Optimization:
 - Do NOT generate code unless explicitly requested
 - Do NOT provide excessive details or descriptions unless necessary
 - Keep all responses structured, concise, and actionable
 - Always seek approval before expanding on details or switching modes
 
-### Best Practices
-
-1. Gather Full Context Before Planning
-   - Ask only critical clarifying questions
-   - Identify key objectives and constraints
-   - Use existing context when sufficient
-
-2. Design & Development Efficiency
-   - Follow modern development principles
-   - Optimize for performance and maintainability
-   - Prioritize modular, reusable solutions
-   - Consider scalability and long-term costs
-
-3. Token-Efficient Development
-   - Break features into logical phases
-   - Focus on essential architecture
-   - Use efficient tools and frameworks
-   - Provide concise, actionable roadmaps
-   - Seek approval before detailed implementation
+### Best Practices:
+- Gather Full Context Before Planning:
+  - Ask only critical clarifying questions
+  - Identify key objectives and constraints
+  - Use existing context when sufficient
+- Design & Development Efficiency:
+  - Follow modern development principles
+  - Optimize for performance and maintainability
+  - Prioritize modular, reusable solutions
+  - Consider scalability and long-term costs
+- Token-Efficient Development:
+  - Break features into logical phases
+  - Focus on essential architecture
+  - Use efficient tools and frameworks
+  - Provide concise, actionable roadmaps
+  - Seek approval before detailed implementation
 """
 
     # Extract project description from README
@@ -434,17 +431,18 @@ def generate_product_context():
     # Format the content with the extracted description
     content = efficiency_template.format(project_description=description)
 
-    # Write to productContext.md
-    prod_context_path = os.path.join("memory-bank", "productContext.md")
+    # Write to productContext.yaml
+    prod_context_path = os.path.join("memory-bank", "productContext.yaml")
     if os.path.exists(prod_context_path):
         if not prompt_yes_no(f"{prod_context_path} already exists. Overwrite?"):
-            print("Skipping productContext.md creation.")
+            print("Skipping productContext.yaml creation.")
             return
 
     with open(prod_context_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-    print("Created memory-bank/productContext.md with project description and efficiency guidelines.")
+    print("Created memory-bank/productContext.yaml with project description and efficiency guidelines.")
+
 def update_gitignore():
     """Dynamically update .gitignore with all Memory Bank files."""
     # Start with basic patterns
@@ -534,7 +532,7 @@ def get_remote_file_info(url, max_retries=MAX_RETRIES, connect_timeout=CONNECT_T
     return None
 
 def verify_installation():
-    """Ensure the required .clinerules files and productContext.md exist."""
+    """Ensure the required .clinerules files and productContext.yaml exist."""
     # Only check the essential files for installation
     essential_files = [
         ".clinerules-architect",
@@ -542,7 +540,7 @@ def verify_installation():
         ".clinerules-code",
         ".clinerules-debug",
         ".roomodes",
-        os.path.join("memory-bank", "productContext.md")
+        os.path.join("memory-bank", "productContext.yaml")
     ]
     all_good = True
     for path in essential_files:
@@ -588,9 +586,9 @@ def increment_version(version_str, level='patch'):
         return f"{major}.{minor}.{patch + 1}"
 
 def update_memory_bank_version(new_version):
-    """Update version in Memory Bank's productContext.md."""
+    """Update version in Memory Bank's productContext.yaml."""
     try:
-        prod_context_path = os.path.join("memory-bank", "productContext.md")
+        prod_context_path = os.path.join("memory-bank", "productContext.yaml")
         with open(prod_context_path, "r", encoding="utf-8") as f:
             content = f.read()
 
@@ -772,7 +770,7 @@ def update_script(script_path, new_version=None, max_retries=MAX_RETRIES, connec
                 os.chmod(script_path, 0o755)
 
             # Update Memory Bank version if provided
-            if new_version and os.path.exists(os.path.join("memory-bank", "productContext.md")):
+            if new_version and os.path.exists(os.path.join("memory-bank", "productContext.yaml")):
                 if update_memory_bank_version(new_version):
                     print(f"Memory Bank version updated to {new_version}")
                 else:
@@ -879,9 +877,9 @@ def check_for_new_files():
                 name.startswith('.cline')):
                 remote_files.append(name)
     
-    # Add memory-bank files
+    # Add memory-bank files (including both .md and .yaml files)
     for item in memory_bank_contents:
-        if item.get('type') == 'file' and item.get('name', '').endswith('.md'):
+        if item.get('type') == 'file' and (item.get('name', '').endswith('.md') or item.get('name', '').endswith('.yaml')):
             remote_files.append(os.path.join('memory-bank', item.get('name')))
     
     # Compare with our expected files list
@@ -1000,7 +998,7 @@ def do_update_extension():
     
     # Check memory-bank files for updates
     expected = get_expected_files()
-    for file in [f for f in expected if f.startswith('memory-bank/') and f.endswith('.md')]:
+    for file in [f for f in expected if f.startswith('memory-bank/') and (f.endswith('.md') or f.endswith('.yaml'))]:
         if not os.path.exists(file):
             continue
             
