@@ -13,6 +13,12 @@ import datetime
 import re
 import json
 
+# --- Network Configuration ---
+# Get network settings from environment variables or use defaults
+CONNECT_TIMEOUT = int(os.getenv('MEMBANK_CONNECT_TIMEOUT', '10'))
+READ_TIMEOUT = int(os.getenv('MEMBANK_READ_TIMEOUT', '30'))
+MAX_RETRIES = int(os.getenv('MEMBANK_MAX_RETRIES', '3'))
+
 def get_version():
     """Get current version from GitHub releases."""
     try:
@@ -29,12 +35,6 @@ def get_version():
         return "0.0.0"
 
 VERSION = get_version()
-
-# --- Network Configuration ---
-# Get network settings from environment variables or use defaults
-CONNECT_TIMEOUT = int(os.getenv('MEMBANK_CONNECT_TIMEOUT', '10'))
-READ_TIMEOUT = int(os.getenv('MEMBANK_READ_TIMEOUT', '30'))
-MAX_RETRIES = int(os.getenv('MEMBANK_MAX_RETRIES', '3'))
 
 # --- Version Check ---
 # Ensure the script is run with Python 3.10 or higher
