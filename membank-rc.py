@@ -28,8 +28,15 @@ def get_version():
         
         with opener.open(url, timeout=CONNECT_TIMEOUT) as response:
             data = response.read().decode('utf-8')
-            release_info = eval(data)  # Safe since we trust the GitHub API response
-            return release_info.get('tag_name', '0.0.0').lstrip('v')
+            try:
+                release_info = json.loads(data)
+                if 'message' in release_info and release_info['message'] == 'Not Found':
+                    # No releases found
+                    return "0.0.0"
+                return release_info.get('tag_name', '0.0.0').lstrip('v')
+            except json.JSONDecodeError:
+                # If we can't parse the JSON, return default version
+                return "0.0.0"
     except Exception:
         # If we can't reach GitHub API, return default version
         return "0.0.0"
@@ -645,20 +652,31 @@ def check_script_version(max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOU
                         print(f"Warning: GitHub API rate limit low ({remaining} requests remaining)")
                 
                 data = response.read().decode('utf-8')
-                release_info = eval(data)  # Safe since we trust the GitHub API response
-                latest_version = release_info.get('tag_name', '0.0.0').lstrip('v')
-                
-                current = parse_version(VERSION)
-                latest = parse_version(latest_version)
-                
-                if latest == (0, 0, 0):
-                    print("Warning: Unable to parse latest version number")
-                    return None
+                try:
+                    release_info = json.loads(data)
+                    if 'message' in release_info and release_info['message'] == 'Not Found':
+                        print("No releases found for this repository.")
+                        return None
+                        
+                    latest_version = release_info.get('tag_name', '0.0.0').lstrip('v')
                     
-                if latest > current:
-                    return latest_version
-                print("Script is up to date.")
-                return None
+                    current = parse_version(VERSION)
+                    latest = parse_version(latest_version)
+                    
+                    if latest == (0, 0, 0):
+                        print("Warning: Unable to parse latest version number")
+                        return None
+                        
+                    if latest > current:
+                        return latest_version
+                    print("Script is up to date.")
+                    return None
+                except json.JSONDecodeError as e:
+                    print(f"Error parsing GitHub API response: {e}")
+                    return None
+                except Exception as e:
+                    print(f"Unexpected error processing version data: {e}")
+                    return None
                 
         except urllib.error.URLError as e:
             last_error = e
