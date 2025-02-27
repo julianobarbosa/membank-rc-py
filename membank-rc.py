@@ -1019,6 +1019,12 @@ def do_update_extension():
             print(f"\nDownloaded {new_files_downloaded} new file(s).")
         
         print("\nUpdate process completed.")
+        
+        # Update .gitignore with any new files
+        if prompt_yes_no("Would you like to add any new files to .gitignore?"):
+            update_gitignore()
+        else:
+            print("Skipping .gitignore update.")
 
 # --- Command Functions ---
 def do_install_extension(architect_url, ask_url, code_url):
