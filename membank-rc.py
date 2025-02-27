@@ -11,6 +11,7 @@ import os
 
 import datetime
 import re
+import json
 
 def get_version():
     """Get current version from GitHub releases."""
@@ -42,33 +43,212 @@ if sys.version_info < (3, 10):
     sys.exit(1)
 
 # --- Constants & URLs ---
-# List of expected files and folders for the extension
-expected_files = [
+# Base list of essential files for the extension
+base_expected_files = [
     ".clinerules-architect",
     ".clinerules-ask",
     ".clinerules-code",
-    os.path.join("memory-bank", "activeContext.md"),
-    os.path.join("memory-bank", "decisionLog.md"),
+    ".clinerules-debug",
+    ".roomodes",
     os.path.join("memory-bank", "productContext.md"),
-    os.path.join("memory-bank", "progress.md"),
-    os.path.join("memory-bank", "systemPatterns.md"),
 ]
 
+# Function to get the current list of expected files
+def get_expected_files():
+    """
+    Get the current list of expected files, including any that exist locally.
+    This makes the list dynamic based on what files are already present.
+    
+    Returns:
+        List of expected files
+    """
+    # Start with the base list
+    expected = base_expected_files.copy()
+    
+    # Add any .clinerules files that exist locally
+    for file in os.listdir('.'):
+        if file.startswith('.clinerules-') and file not in expected:
+            expected.append(file)
+    
+    # Add .roomodes if it exists
+    if os.path.exists('.roomodes'):
+        expected.append('.roomodes')
+    
+    # Add any memory-bank/*.md files that exist locally
+    if os.path.isdir('memory-bank'):
+        for file in os.listdir('memory-bank'):
+            if file.endswith('.md'):
+                mb_file = os.path.join('memory-bank', file)
+                if mb_file not in expected:
+                    expected.append(mb_file)
+    
+    return expected
 # URLs for downloading files
 GITHUB_API_URL = "https://api.github.com/repos/heratiki/membank-rc-py"
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/heratiki/membank-rc-py/main"
 SCRIPT_URL = f"{GITHUB_RAW_URL}/membank-rc.py"
 
-clinerules_files = {
-    ".clinerules-architect": "https://raw.githubusercontent.com/GreatScottyMac/roo-code-memory-bank/main/.clinerules-architect",
-    ".clinerules-ask":       "https://raw.githubusercontent.com/GreatScottyMac/roo-code-memory-bank/main/.clinerules-ask",
-    ".clinerules-code":      "https://raw.githubusercontent.com/GreatScottyMac/roo-code-memory-bank/main/.clinerules-code"
-}
+# GitHub repository for memory bank files
+MEMORY_BANK_REPO_OWNER = "GreatScottyMac"
+MEMORY_BANK_REPO_NAME = "roo-code-memory-bank"
+MEMORY_BANK_API_URL = f"https://api.github.com/repos/{MEMORY_BANK_REPO_OWNER}/{MEMORY_BANK_REPO_NAME}"
+MEMORY_BANK_RAW_URL = f"https://raw.githubusercontent.com/{MEMORY_BANK_REPO_OWNER}/{MEMORY_BANK_REPO_NAME}/main"
+
+# Function to get the current mapping of files to their URLs
+def get_clinerules_files():
+    """
+    Get the current mapping of clinerules files and other special files to their URLs.
+    This makes the mapping dynamic based on what files are discovered in the repository.
+    
+    Returns:
+        Dictionary mapping file names to their URLs
+    """
+    # Start with the base files we know about
+    files = {
+        ".clinerules-architect": f"{MEMORY_BANK_RAW_URL}/.clinerules-architect",
+        ".clinerules-ask":       f"{MEMORY_BANK_RAW_URL}/.clinerules-ask",
+        ".clinerules-code":      f"{MEMORY_BANK_RAW_URL}/.clinerules-code",
+        ".clinerules-debug":     f"{MEMORY_BANK_RAW_URL}/.clinerules-debug",
+        ".roomodes":             f"{MEMORY_BANK_RAW_URL}/.roomodes",
+    }
+  
+    # Look for any other .clinerules files that might exist locally
+    for file in os.listdir('.'):
+        if file.startswith('.clinerules-') and file not in files:
+            files[file] = f"{MEMORY_BANK_RAW_URL}/{file}"
+    
+    return files
+
+def check_remote_file_exists(url, max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOUT):
+    """
+    Check if a remote file exists by sending a HEAD request.
+    
+    Args:
+        url: The URL to check
+        max_retries: Maximum number of retry attempts
+        connect_timeout: Connection timeout in seconds
+    
+    Returns:
+        True if the file exists, False otherwise
+    """
+    retry_count = 0
+    
+    while retry_count <= max_retries:
+        try:
+            if retry_count > 0:
+                backoff = 2 ** retry_count
+                time.sleep(backoff)
+            
+            opener = urllib.request.build_opener()
+            opener.addheaders = [('User-Agent', f'membank-rc/{VERSION}')]
+            
+            request = urllib.request.Request(url, method='HEAD')
+            with opener.open(request, timeout=connect_timeout) as response:
+                return response.getcode() == 200
+                
+        except urllib.error.URLError as e:
+            if hasattr(e, 'code') and e.code == 404:
+                return False
+            
+        except Exception:
+            pass
+        
+        retry_count += 1
+    
+    return False
 
 # --- Utility Functions ---
+def get_repo_contents(repo_owner, repo_name, path="", max_retries=MAX_RETRIES, connect_timeout=CONNECT_TIMEOUT, read_timeout=READ_TIMEOUT):
+    """
+    Get contents of a GitHub repository directory.
+    
+    Args:
+        repo_owner: Owner of the repository
+        repo_name: Name of the repository
+        path: Path within the repository (empty for root)
+        max_retries: Maximum number of retry attempts
+        connect_timeout: Connection timeout in seconds
+        read_timeout: Read timeout in seconds
+    
+    Returns:
+        List of file/directory objects if successful, None if failed
+    """
+    retry_count = 0
+    last_error = None
+    
+    while retry_count <= max_retries:
+        try:
+            if retry_count > 0:
+                backoff = 2 ** retry_count
+                print(f"Retry attempt {retry_count}/{max_retries} (waiting {backoff}s)...")
+                time.sleep(backoff)
+            
+            opener = urllib.request.build_opener()
+            opener.addheaders = [('User-Agent', f'membank-rc/{VERSION}')]
+            
+            url = f"{MEMORY_BANK_API_URL}/contents/{path}"
+            with opener.open(url, timeout=connect_timeout) as response:
+                if response.headers.get('X-RateLimit-Remaining', '').isdigit():
+                    remaining = int(response.headers['X-RateLimit-Remaining'])
+                    if remaining < 10:
+                        print(f"Warning: GitHub API rate limit low ({remaining} requests remaining)")
+                
+                data = response.read().decode('utf-8')
+                return json.loads(data)
+                
+        except urllib.error.URLError as e:
+            last_error = e
+            if hasattr(e, 'code'):
+                # HTTP error with status code
+                error_msg = f"HTTP {e.code}"
+                if e.code == 404:
+                    error_msg += " (Path not found in repository)"
+                elif e.code == 403:
+                    error_msg += " (GitHub API rate limit exceeded)"
+                    # Check when rate limit resets
+                    try:
+                        reset_time = int(e.headers.get('X-RateLimit-Reset', 0))
+                        if reset_time:
+                            reset_datetime = datetime.datetime.fromtimestamp(reset_time)
+                            error_msg += f"\nRate limit will reset at {reset_datetime}"
+                    except:
+                        pass
+                else:
+                    error_msg += f" ({str(e.reason) if hasattr(e, 'reason') else 'unknown error'})"
+                print(f"Error listing repository contents: {error_msg}")
+            else:
+                # Network-level error
+                error_msg = str(e.reason) if hasattr(e, 'reason') else str(e)
+                if isinstance(e.reason, socket.timeout):
+                    print(f"Timeout error listing repository contents: {error_msg}")
+                elif isinstance(e.reason, socket.gaierror):
+                    print(f"Network error: Could not resolve host - {error_msg}")
+                else:
+                    print(f"Network error listing repository contents: {error_msg}")
+                
+        except socket.timeout as e:
+            last_error = e
+            print(f"Timeout error listing repository contents: {e}")
+            
+        except Exception as e:
+            last_error = e
+            print(f"Unexpected error listing repository contents: {e}")
+        
+        retry_count += 1
+    
+    # If we get here, all retries failed
+    print(f"\nFailed to list repository contents after {max_retries} attempts.")
+    print(f"Last error: {last_error}")
+    if isinstance(last_error, urllib.error.URLError) and isinstance(last_error.reason, socket.timeout):
+        print("\nTroubleshooting suggestions:")
+        print("1. Check your internet connection")
+        print("2. The server might be temporarily unavailable")
+        print(f"3. Try increasing the timeouts (current: connect={connect_timeout}s, read={read_timeout}s)")
+    return None
+
 def any_extension_exists():
     """Check if any expected file/folder exists in the current directory."""
-    for path in expected_files:
+    for path in get_expected_files():
         if os.path.exists(path):
             return True
     if os.path.isdir("memory-bank"):
@@ -259,19 +439,23 @@ def generate_product_context():
 
     print("Created memory-bank/productContext.md with project description and efficiency guidelines.")
 def update_gitignore():
-    """Ask the user to append extension files/folder to .gitignore."""
-    ignore_lines = [
-        ".clinerules-architect",
-        ".clinerules-ask",
-        ".clinerules-code",
-        "memory-bank/"
-    ]
+    """Dynamically update .gitignore with all Memory Bank files."""
+    # Start with basic patterns
+    ignore_lines = ["memory-bank/"]
+    
+    # Add all .clinerules files and other special files
+    for file in os.listdir('.'):
+        if file.startswith('.clinerules-') or file == '.roomodes':
+            ignore_lines.append(file)
+    
+    # Read existing .gitignore
     gitignore_path = ".gitignore"
     existing_lines = []
     if os.path.exists(gitignore_path):
         with open(gitignore_path, "r", encoding="utf-8") as f:
             existing_lines = f.read().splitlines()
 
+    # Append new lines
     with open(gitignore_path, "a", encoding="utf-8") as f:
         for line in ignore_lines:
             if line not in existing_lines:
@@ -343,10 +527,18 @@ def get_remote_file_info(url, max_retries=MAX_RETRIES, connect_timeout=CONNECT_T
     return None
 
 def verify_installation():
-    """Ensure the three .clinerules files and productContext.md exist."""
-    required = list(clinerules_files.keys()) + [os.path.join("memory-bank", "productContext.md")]
+    """Ensure the required .clinerules files and productContext.md exist."""
+    # Only check the essential files for installation
+    essential_files = [
+        ".clinerules-architect",
+        ".clinerules-ask",
+        ".clinerules-code",
+        ".clinerules-debug",
+        ".roomodes",
+        os.path.join("memory-bank", "productContext.md")
+    ]
     all_good = True
-    for path in required:
+    for path in essential_files:
         if not os.path.exists(path):
             print(f"Error: {path} is missing.")
             all_good = False
@@ -603,7 +795,7 @@ def update_script(script_path, new_version=None, max_retries=MAX_RETRIES, connec
     return False
 
 def do_check_updates(script_path=None):
-    """Check for and apply updates to both the script and .clinerules files."""
+    """Check for and apply updates to both the script and Memory Bank files."""
     print("=== Checking for Updates ===\n")
     
     # Check script updates first
@@ -620,8 +812,119 @@ def do_check_updates(script_path=None):
         else:
             print("\nScript is up to date.")
     
-    # Then check .clinerules updates
+    # Check for new files in the repository
+    print("\n=== Checking for New Memory Bank Files ===\n")
+    new_files = check_for_new_files()
+    if new_files:
+        download_new_files(new_files)
+    else:
+        print("No new files found in the repository.")
+    
+    # Then check for updates to existing files
     do_update_extension()
+
+def check_for_new_files():
+    """
+    Check the remote repository for new files that aren't in our expected_files list.
+    
+    Returns:
+        List of new files found in the repository
+    """
+    print("Checking for new files in the Memory Bank repository...")
+    
+    # Get contents of the root directory
+    root_contents = get_repo_contents(MEMORY_BANK_REPO_OWNER, MEMORY_BANK_REPO_NAME)
+    if not root_contents:
+        print("Failed to retrieve repository contents.")
+        return []
+    
+    # Get contents of the memory-bank directory
+    memory_bank_contents = []
+    for item in root_contents:
+        if item.get('name') == 'memory-bank' and item.get('type') == 'dir':
+            memory_bank_contents = get_repo_contents(MEMORY_BANK_REPO_OWNER, MEMORY_BANK_REPO_NAME, "memory-bank")
+            if not memory_bank_contents:
+                print("Failed to retrieve memory-bank directory contents.")
+                memory_bank_contents = []
+            break
+    
+    # Build list of all remote files
+    remote_files = []
+    
+    # Add root level files that match our patterns
+    for item in root_contents:
+        if item.get('type') == 'file':
+            name = item.get('name', '')
+            # Check for .clinerules files and other relevant hidden files
+            if (name.startswith('.clinerules-') or
+                name == '.roomodes' or
+                name.startswith('.cline')):
+                remote_files.append(name)
+    
+    # Add memory-bank files
+    for item in memory_bank_contents:
+        if item.get('type') == 'file' and item.get('name', '').endswith('.md'):
+            remote_files.append(os.path.join('memory-bank', item.get('name')))
+    
+    # Compare with our expected files list
+    expected = get_expected_files()
+    new_files = []
+    for remote_file in remote_files:
+        if remote_file not in expected:
+            new_files.append(remote_file)
+    
+    return new_files
+
+def download_new_files(new_files):
+    """
+    Download new files found in the repository.
+    
+    Args:
+        new_files: List of new files to download
+    
+    Returns:
+        Number of files successfully downloaded
+    """
+    if not new_files:
+        return 0
+    
+    print(f"\nFound {len(new_files)} new file(s) in the repository:")
+    for i, file in enumerate(new_files, 1):
+        print(f"{i}. {file}")
+    
+    if not prompt_yes_no("\nWould you like to download these new files?"):
+        print("Skipping download of new files.")
+        return 0
+    
+    downloaded = 0
+    for file in new_files:
+        # Determine if it's a root file or memory-bank file
+        if os.path.dirname(file) == 'memory-bank':
+            # It's a memory-bank file
+            filename = os.path.basename(file)
+            url = f"{MEMORY_BANK_RAW_URL}/memory-bank/{filename}"
+            dest = os.path.join("memory-bank", filename)
+        else:
+            # It's a root file
+            url = f"{MEMORY_BANK_RAW_URL}/{file}"
+            dest = file
+        
+        # Ensure directory exists
+        dir_path = os.path.dirname(dest)
+        if dir_path:  # Only create directory if there's a directory path
+            os.makedirs(dir_path, exist_ok=True)
+        
+        # Download the file
+        try:
+            download_file(url, dest)
+            downloaded += 1
+            
+            # No need to manually add to expected_files list
+            # The get_expected_files() function will pick up the new file on next run
+        except Exception as e:
+            print(f"Error downloading {file}: {e}")
+    
+    return downloaded
 
 def do_update_extension():
     """Check for and apply updates to .clinerules files and Memory Bank version."""
@@ -631,9 +934,34 @@ def do_update_extension():
     version_updated = False
     current_version = VERSION
     
-    for local_file, remote_url in clinerules_files.items():
+    # First check for new files
+    new_files = check_for_new_files()
+    new_files_downloaded = 0
+    
+    if new_files:
+        new_files_downloaded = download_new_files(new_files)
+        if new_files_downloaded > 0:
+            updates_available = True
+    else:
+        print("No new files found in the repository.")
+    
+    # Then check for updates to existing files and download new files
+    clinerules_files_dict = get_clinerules_files()
+    for local_file, remote_url in clinerules_files_dict.items():
         if not os.path.exists(local_file):
-            print(f"Warning: {local_file} not found. Skipping update check.")
+            # Check if the file exists in the repository
+            if check_remote_file_exists(remote_url):
+                print(f"Found new file: {local_file}")
+                if prompt_yes_no(f"Would you like to download {local_file}?"):
+                    try:
+                        download_file(remote_url, local_file)
+                        updates_available = True
+                    except Exception as e:
+                        print(f"Error downloading {local_file}: {e}")
+                else:
+                    print(f"Skipped download of {local_file}.")
+            else:
+                print(f"Warning: {local_file} not found locally or in repository. Skipping.")
             continue
             
         print(f"Checking {local_file} for updates...")
@@ -652,8 +980,33 @@ def do_update_extension():
                 else:
                     print(f"Skipped update for {local_file}.")
     
+    # Check memory-bank files for updates
+    expected = get_expected_files()
+    for file in [f for f in expected if f.startswith('memory-bank/') and f.endswith('.md')]:
+        if not os.path.exists(file):
+            continue
+            
+        filename = os.path.basename(file)
+        remote_url = f"{MEMORY_BANK_RAW_URL}/memory-bank/{filename}"
+        
+        print(f"Checking {file} for updates...")
+        remote_info = get_remote_file_info(remote_url)
+        
+        if remote_info:
+            with open(file, 'r', encoding='utf-8') as f:
+                local_content = f.read()
+            
+            if local_content != remote_info['content']:
+                updates_available = True
+                if prompt_yes_no(f"Update available for {file}. Would you like to update?"):
+                    with open(file, 'w', encoding='utf-8') as f:
+                        f.write(remote_info['content'])
+                    print(f"Updated {file}.")
+                else:
+                    print(f"Skipped update for {file}.")
+    
     if not updates_available:
-        print("\nAll .clinerules files are up to date!")
+        print("\nAll files are up to date!")
     else:
         # Increment version if updates were applied
         new_version = increment_version(current_version, 'patch')
@@ -661,6 +1014,10 @@ def do_update_extension():
             print(f"\nMemory Bank version updated to {new_version}")
         else:
             print("\nWarning: Failed to update Memory Bank version")
+        
+        if new_files_downloaded > 0:
+            print(f"\nDownloaded {new_files_downloaded} new file(s).")
+        
         print("\nUpdate process completed.")
 
 # --- Command Functions ---
@@ -678,6 +1035,21 @@ def do_install_extension(architect_url, ask_url, code_url):
     download_file(architect_url, ".clinerules-architect")
     download_file(ask_url, ".clinerules-ask")
     download_file(code_url, ".clinerules-code")
+    
+    # Also download .clinerules-debug and .roomodes if they exist in the repository
+    debug_url = f"{MEMORY_BANK_RAW_URL}/.clinerules-debug"
+    roomodes_url = f"{MEMORY_BANK_RAW_URL}/.roomodes"
+    
+    try:
+        download_file(debug_url, ".clinerules-debug")
+    except Exception as e:
+        print(f"Note: Could not download .clinerules-debug: {e}")
+        
+    try:
+        download_file(roomodes_url, ".roomodes")
+    except Exception as e:
+        print(f"Note: Could not download .roomodes: {e}")
+    
     generate_product_context()
 
 
