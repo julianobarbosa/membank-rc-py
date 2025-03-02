@@ -47,6 +47,11 @@ VERSION = get_version()
 # Ensure the script is run with Python 3.10 or higher
 if sys.version_info < (3, 10):
     print("This script requires Python 3.10 or higher.")
+    print(f"Detected Python version: {sys.version}")
+    print("If you believe this is an error and you have Python 3.10+ installed, please check:")
+    print("1. That you're running the script with the correct Python interpreter")
+    print("2. Your PATH environment variable points to the correct Python installation")
+    print(f"3. Try running with explicit interpreter: python3.10+ {os.path.basename(__file__)}")
     sys.exit(1)
 
 # --- Constants & URLs ---
